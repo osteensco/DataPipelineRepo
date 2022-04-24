@@ -7,6 +7,19 @@ import bs4 as bs
 from sqlalchemy import create_engine, types
 
 
+
+#Notes:
+    #does connection to database stay open while program runs?
+        #if yes refactor to open connection at start of pipeline and close at end
+
+
+
+
+
+
+
+
+
 class DataSource:
     def __init__(self) -> None:
         self.source = None
@@ -14,7 +27,6 @@ class DataSource:
         self.df = pd.DataFrame()
         self.table_name = None
         self.dtype = {}
-        self.ingested_data = None
         self.destination = None
         self.scheduled = self.schedule()
 
@@ -52,8 +64,8 @@ class DataSource:
         self.df.to_sql(self.table_name, engine, if_exists='append', index=False, dtype=self.dtype)
 
 
-    def pull(self):
-        pass
+
+
         
 class WeatherData(DataSource):
     def __init__(self, states) -> None:
@@ -62,6 +74,8 @@ class WeatherData(DataSource):
         self.format = 'json'
         self.states = states
         self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
+        self.table_name = 'Daily_Weather'
+        self.dtype = {i: types.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
         self.last_pull = self.retrieve_last_pull()
         self.requests = self.retrieve_monthly_req()
@@ -82,6 +96,15 @@ class WeatherData(DataSource):
     def retrieve_zips(self):
         #query database geo data, return list of zip codes based on self.states
         pass
+
+    def schedule(self):
+    #get current date
+    #check last run for each source, then determine if run should be scheduled
+        #read table data source lands in to find last run
+        #datesubtract to determine if another run should be scheduled
+    #identify by boolean value if data source should be fed through pipeline
+        #returns True/False
+        return None
 
     def check_req_limit(self):
         if datetime.date.today().strftime("""%d""") == "01":
@@ -131,8 +154,6 @@ class WeatherData(DataSource):
         result_df[self.weather_data_col] = result_df[self.weather_data_col].astype('float')
         return self.df.append(result_df)
 
-    def pull(self):
-        self.extract()
 
 
 
@@ -142,6 +163,8 @@ class GeoData(DataSource):
         super().__init__()
         self.source = '''https://www.unitedstateszipcodes.org/'''
         self.format = 'webscraped html to json'
+        self.table_name = 'US_Zips_Counties'
+        self.dtype = {'ZIP Code': types.String, 'County': types.String, 'State': types.String}
         self.df = pd.DataFrame(columns=['ZIP Code', 'County', 'State'], dtype=str)
         self.States = [
             'AL', 'AR', 'AZ', 'CA', 'CO', 'CT',
@@ -153,7 +176,16 @@ class GeoData(DataSource):
             'RI', 'SC', 'SD', 'TN', 'TX', 'UT',
             'VA', 'VT', 'WA', 'WI', 'WV', 'WY'
         ]
-        #read state abbreviations from database?
+
+    def schedule(self):
+    #get current date
+    #check last run for each source, then determine if run should be scheduled
+        #read table data source lands in to find last run
+        #datesubtract to determine if another run should be scheduled
+    #identify by boolean value if data source should be fed through pipeline
+        #returns True/False
+        return None
+
 
     def extract(self):
         for state in self.States:
@@ -217,7 +249,7 @@ class Pipeline:
     def run(self):
         for data in self.data_objs:
             if data.scheduled:
-                data.pull()
+                data.extract()
                 data.load(self.creds)
 
 
