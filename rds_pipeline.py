@@ -9,8 +9,12 @@ from sqlalchemy import create_engine, types
 
 
 #Notes:
-    #does connection to database stay open while program runs?
-        #if yes refactor to open connection at start of pipeline and close at end
+    #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
+    #next steps:
+        #build schedule method for geodata
+        #set up amazon secrets, write retrieval method
+        #add field to geodata table containing date or create separate table to track pull dates?
+        #once schedule method works, test feeding geodata through pipeline
 
 
 
@@ -45,20 +49,11 @@ class DataSource:
     def clean(self):
         pass
 
-    def load(self, secret):#move inside pipeline?
-        #attain secrets from aws secret manager
-        secret_hostname = ''
-        secret_db = ''
-        secret_uname = ''
-        secret_pass = ''
-        #connect to aws rds database
-        hostname=secret_hostname
-        dbname=secret_db
-        uname=secret_uname
-        pwd=secret_pass
-
+    def load(self, secret):
+        #list [hostname, dbname, uname, pwd] is fed into the load method
+        
         # Create SQLAlchemy engine for connection to MySQL Database
-        engine = create_engine(f'''mysql://{uname}:{pwd}@{hostname}/{dbname}''')
+        engine = create_engine(f'''mysql://{secret[2]}:{secret[3]}@{secret[0]}/{secret[1]}''')
 
         #land in appropriate tables
         self.df.to_sql(self.table_name, engine, if_exists='append', index=False, dtype=self.dtype)
@@ -241,19 +236,44 @@ class Pipeline:
         #self.creds = obtain secret from aws secrets
         self.init_log()
         #logs land in a table in rds database as well
+        self.secrets = self.retrieve_secrets()
         self.run()
 
     def init_log(self):
         logging.basicConfig(filename=self.log, filemode='w', format='%(asctime)s - %(message)s', level=logging.INFO)
 
+    def retrieve_secrets(self):
+        #attain secrets from aws secret manager
+        secret_hostname = ''
+        secret_db = ''
+        secret_uname = ''
+        secret_pass = ''
+        #connect to aws rds database
+        self.hostname=secret_hostname
+        self.dbname=secret_db
+        self.uname=secret_uname
+        self.pwd=secret_pass
+
+        return [self.hostname, self.dbname, self.uname, self.pwd]
+
     def run(self):
         for data in self.data_objs:
             if data.scheduled:
+                data.secrets = self.secrets
                 data.extract()
-                data.load(self.creds)
+                data.load(self.secrets)
 
 
 
 
 if __name__ == '__main__':
-    pass
+
+
+    data = [
+        GeoData()
+
+        ]
+
+
+    aws_rds_data_pipeline = Pipeline(data)
+    print('Complete')
