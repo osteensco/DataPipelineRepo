@@ -5,14 +5,19 @@ import requests
 import time
 import bs4 as bs
 from sqlalchemy import create_engine, types
-
+import boto3
+import base64
+from botocore.exceptions import ClientError
+import json
 
 
 #Notes:
     #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
     #next steps:
         #build schedule method for geodata
+            #add date_pulled column for geodata
         #set up amazon secrets, write retrieval method
+            #secret is key-value paired, pipeline will ingest and store as self.secrets
         #add field to geodata table containing date or create separate table to track pull dates?
         #once schedule method works, test feeding geodata through pipeline
 
@@ -181,7 +186,6 @@ class GeoData(DataSource):
         #returns True/False
         return None
 
-
     def extract(self):
         for state in self.States:
             r = requests.get(url=f'''https://www.unitedstateszipcodes.org/{state.lower()}/#zips-list''', 
@@ -242,17 +246,56 @@ class Pipeline:
     def init_log(self):
         logging.basicConfig(filename=self.log, filemode='w', format='%(asctime)s - %(message)s', level=logging.INFO)
 
-    def retrieve_secrets(self):
-        #attain secrets from aws secret manager
-        secret_hostname = ''
-        secret_db = ''
-        secret_uname = ''
-        secret_pass = ''
-        #connect to aws rds database
-        self.hostname=secret_hostname
-        self.dbname=secret_db
-        self.uname=secret_uname
-        self.pwd=secret_pass
+    def retrieve_secrets(self):#attain secrets from aws secret manager
+        secret_name = "pipeline"
+        region_name = "us-east-2"
+        # Create a Secrets Manager client
+        session = boto3.session.Session()
+        client = session.client(
+            service_name='secretsmanager',
+            region_name=region_name
+        )
+        # error info see https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        try:
+            get_secret_value_response = client.get_secret_value(
+                SecretId=secret_name
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'DecryptionFailureException':
+                # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InternalServiceErrorException':
+                # An error occurred on the server side.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InvalidParameterException':
+                # You provided an invalid value for a parameter.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InvalidRequestException':
+                # You provided a parameter value that is not valid for the current state of the resource.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'ResourceNotFoundException':
+                # We can't find the resource that you asked for.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+        else:
+            # Decrypts secret using the associated KMS key.
+            # Depending on whether the secret is a string or binary, one of these fields will be populated.
+            if 'SecretString' in get_secret_value_response:
+                secret = get_secret_value_response['SecretString']
+            else:
+                secret = base64.b64decode(get_secret_value_response['SecretBinary'])
+            secret = json.loads(secret)#convert to dictionary
+
+        #assign to attributes
+        self.weatherapi = secret['weatherapi']
+        self.hostname = secret['dbhost']
+        self.dbname = secret['dbname']
+        self.uname = secret['dbuser']
+        self.pwd = secret['dbpass']
 
         return [self.hostname, self.dbname, self.uname, self.pwd]
 
