@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import time
 import bs4 as bs
-from sqlalchemy import create_engine, types
+from sqlalchemy import create_engine, types, sql
 import boto3
 import base64
 from botocore.exceptions import ClientError
@@ -13,13 +13,12 @@ import json
 
 #Notes:
     #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
+    
     #next steps:
         #build schedule method for geodata
-            #add date_pulled column for geodata
-        #set up amazon secrets, write retrieval method
-            #secret is key-value paired, pipeline will ingest and store as self.secrets
-        #add field to geodata table containing date or create separate table to track pull dates?
         #once schedule method works, test feeding geodata through pipeline
+        #test weatherdata schedule method
+        #determine what data format result variables are in
 
 
 
@@ -66,47 +65,58 @@ class WeatherData(DataSource):
         super().__init__()
         self.source = '''http://api.weatherapi.com/v1/history.json'''
         self.format = 'json'
-        self.states = states
+        self.states = states #list of state abbreviation strings, all caps
         self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
         self.dtypes = {i: types.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
-        self.last_pull = self.retrieve_last_pull()
-        self.requests = self.retrieve_monthly_req()
         self.APIkey = None
-        self.zipcodes = self.retrieve_zips()
+
 
     def retrieve_last_pull(self):
-        #query database to determine when last pull was
-        pass
+        query = f'''SELECT MAX(Date) FROM {self.table_name}'''
+        result = self.db_engine.execute(sql.text(query))
+        return result
+
 
     def retrieve_monthly_req(self):
-        #query database to determine requests made month to date
-        pass
+        curr_month = datetime.date.today().month
+        curr_year = datetime.date.today().year
+        #determine if a pull has been made this month or not
+        if (self.last_pull.month < curr_month
+        or self.last_pull.year < curr_year):    
+        #if last pull is not this month or this year (account for year change):
+            self.requests = 0
+            logging.info(f'{self.table_name} first pull of the month, monthly request limit reset, may want to verify manually')
+        else:
+            #query database to determine requests made month to date
+            query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE MONTH(Date) = {curr_month}'''
+            result = self.db_engine.execute(sql.text(query))
+            #subtract from monthly limit
+            reqs = 1000000 - result
+            #return number of requests available
+            return reqs
 
-    def retrieve_zips(self):
+    def retrieve_zips(self, st):
         #query database geo data, return list of zip codes based on self.states
-        pass
+        query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = {st}'''
+        result = self.db_engine.execute(sql.text(query))
+        return result
 
     def schedule(self):
         super().schedule()
-    #get current date
-    #check last run for each source, then determine if run should be scheduled
-        #read table data source lands in to find last run
-        #datesubtract to determine if another run should be scheduled
-    #identify by boolean value if data source should be fed through pipeline
-        #returns True/False
-        return None
-
-    def check_req_limit(self):
-        if datetime.date.today().strftime("""%d""") == "01":
-        #Replace with: if month(self.last_pull) > current month
-            #determine if a pull has been made this month or not
-            #if not:
-            self.requests = 0
-            logging.info('first of the month, monthly request limit reset, may want to verify manually')
+        self.last_pull = self.retrieve_last_pull()
+        if self.last_pull < self.yesterday:
+            self.requests = self.retrieve_monthly_req()
+            if self.requests > 0:
+                self.zipcodes = []
+                for state in self.state:
+                    self.zipcodes += self.retrieve_zips(state)
+                return True
+            else:
+                return False
         else:
-            pass
+            return False
 
     def extract(self):
         for zip in self.zipcodes:
@@ -140,7 +150,7 @@ class WeatherData(DataSource):
     def clean_and_append(self, json_dict, zip):#specific for weather data
         json_1 = json_dict["forecast"]["forecastday"][0]["day"]
         cleaned_json_result = {k:json_1[k] for k in json_1 if k != 'condition'}
-        cleaned_json_result["ZIP Code"] = zip
+        cleaned_json_result["ZIP_Code"] = zip
         cleaned_json_result["Date"] = self.yesterday
         result_df = pd.DataFrame(cleaned_json_result, index=[0]).astype('str')#need to pass index because it's single row dict
         result_df[self.weather_data_col] = result_df[self.weather_data_col].astype('float')
@@ -156,8 +166,8 @@ class GeoData(DataSource):
         self.source = '''https://www.unitedstateszipcodes.org/'''
         self.format = 'webscraped html to json'
         self.table_name = 'US_Zips_Counties'
-        self.dtypes = {'ZIP Code': types.String, 'County': types.String, 'State': types.String}
-        self.df = pd.DataFrame(columns=['ZIP Code', 'County', 'State'], dtype=str)
+        self.dtypes = {'ZIP_Code': types.String, 'County': types.String, 'State': types.String}
+        self.df = pd.DataFrame(columns=['ZIP_Code', 'County', 'State'], dtype=str)
         self.States = [
             'AL', 'AR', 'AZ', 'CA', 'CO', 'CT',
             'DE', 'FL', 'GA', 'IA', 'ID', 'IL',
@@ -214,7 +224,7 @@ class GeoData(DataSource):
             else:
                 for i in range(len(counties)):#we're just adding the current State we're on for each row that exists
                     sts.append(state)
-                table = {'ZIP Code': zips, 'County': counties, 'State': sts}#attach our data to column names
+                table = {'ZIP_Code': zips, 'County': counties, 'State': sts}#attach our data to column names
                 df1 = pd.DataFrame(data=table, dtype=str)#put in dataframe to easily append
                 df1['Date Pulled'] = datetime.date.today()#add date column
                 self.df = self.df.append(df1)#add to our dataframe
@@ -307,7 +317,7 @@ if __name__ == '__main__':
 
     # data = [
     #     GeoData()
-
+    #     WeatherData(['GA'])
     #     ]
 
 
