@@ -15,7 +15,9 @@ import json
     #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #build schedule method for geodata
+        #add error handling for table does not exist
+            #sqlalchemy.exc.ProgrammingError: (MySQLdb._exceptions.ProgrammingError) (1146, "Table 'projects.US_Zips_Counties' doesn't exist")
+            #see if I can regex this error? programmingerror captures several things - https://sqlalche.me/e/14/f405
         #once schedule method works, test feeding geodata through pipeline
         #test weatherdata schedule method
         #determine what data format result variables are in
