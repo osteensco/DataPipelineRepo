@@ -42,7 +42,7 @@ class DataSource:
         # used for determine if data should be ingested
         # Returns True/False
         # Create SQLAlchemy engine for connection to MySQL Database
-        self.db_engine = create_engine(f'''mysql://{self.secret[2]}:{self.secret[3]}@{self.secret[0]}/{self.secret[1]}''')
+        self.db_engine = create_engine(f'''mysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
@@ -52,9 +52,10 @@ class DataSource:
         pass
 
     def load(self):
-
-        #land in appropriate tables
-        self.df.to_sql(self.table_name, self.db_engine, if_exists='append', index=False, dtype=self.dtypes)
+        #open connection
+        with self.db_engine.connect() as connection:
+            #land in appropriate tables
+            self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
 
 
 
@@ -75,9 +76,9 @@ class WeatherData(DataSource):
 
     def retrieve_last_pull(self):
         query = f'''SELECT MAX(Date) FROM {self.table_name}'''
-        result = self.db_engine.execute(sql.text(query))
+        with self.db_engine.connect() as connection:
+            result = connection.execute(sql.text(query))
         return result
-
 
     def retrieve_monthly_req(self):
         curr_month = datetime.date.today().month
@@ -91,31 +92,39 @@ class WeatherData(DataSource):
         else:
             #query database to determine requests made month to date
             query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE MONTH(Date) = {curr_month}'''
-            result = self.db_engine.execute(sql.text(query))
+            with self.db_engine.connect() as connection:
+                result = connection.execute(sql.text(query))
             #subtract from monthly limit
-            reqs = 1000000 - result
+            reqs = 1000000 - result - len(self.zipcodes)
             #return number of requests available
             return reqs
 
     def retrieve_zips(self, st):
         #query database geo data, return list of zip codes based on self.states
         query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = {st}'''
-        result = self.db_engine.execute(sql.text(query))
+        with self.db_engine.connect() as connection:
+            result = connection.execute(sql.text(query))
         return result
 
     def schedule(self):
         super().schedule()
+        #determine last data ingestion
         self.last_pull = self.retrieve_last_pull()
+        #determine if it was run for yesterday's data
         if self.last_pull < self.yesterday:
+            #grab list of zipcodes to pass to api calls
+            self.zipcodes = []
+            for state in self.states:
+                self.zipcodes += self.retrieve_zips(state)
+            #determine if enough requests are available for another pull
             self.requests = self.retrieve_monthly_req()
             if self.requests > 0:
-                self.zipcodes = []
-                for state in self.state:
-                    self.zipcodes += self.retrieve_zips(state)
                 return True
             else:
+                logging.warning(f'''Not enough {self.table_name} requests available for month, new data will not be pulled.''')
                 return False
         else:
+            logging.info(f'''{self.table_name} data already up to date''')
             return False
 
     def extract(self):
@@ -144,7 +153,7 @@ class WeatherData(DataSource):
                 logging.info(f'''error occured for zip {zip}''')
                 logging.error(e)
                 continue
-
+            #add to df
             self.df = self.clean_and_append(result.json, zip)
 
     def clean_and_append(self, json_dict, zip):#specific for weather data
@@ -181,13 +190,13 @@ class GeoData(DataSource):
 
     def schedule(self):
         super().schedule()
-    #get current date
-    #check last run for each source, then determine if run should be scheduled
-        #read table data source lands in to find last run
-        #datesubtract to determine if another run should be scheduled
-    #identify by boolean value if data source should be fed through pipeline
-        #returns True/False
-        return None
+        query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
+        with self.db_engine.connect() as connection:
+            result = connection.execute(sql.text(query))
+        if result.year < datetime.date.today().year:
+            return True
+        else:
+            return False
 
     def extract(self):
         for state in self.States:
@@ -226,7 +235,7 @@ class GeoData(DataSource):
                     sts.append(state)
                 table = {'ZIP_Code': zips, 'County': counties, 'State': sts}#attach our data to column names
                 df1 = pd.DataFrame(data=table, dtype=str)#put in dataframe to easily append
-                df1['Date Pulled'] = datetime.date.today()#add date column
+                df1['Date_Pulled'] = datetime.date.today()#add date column
                 self.df = self.df.append(df1)#add to our dataframe
                 logging.info(f'''{state} Zips and Counties scraped successfully!''')
 
@@ -239,53 +248,56 @@ class Pipeline:
     def __init__(self, sources) -> None:
         self.timestamp = datetime.datetime.now()
         self.data_objs = sources
-        # self.init_log()
+        self.init_log()
         #logs land in a table in rds database as well
         self.secrets = self.retrieve_secrets()
-        # self.run()
+        self.run()
 
     def init_log(self):
-        logging.basicConfig(filename=self.log, filemode='w', format='%(asctime)s - %(message)s', level=logging.INFO)
+        if logging.getLogger().hasHandlers():
+            logging.getLogger().setLevel(logging.INFO)
+        else:    
+            logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
     def retrieve_secrets(self):#attain secrets from aws secret manager
         secret_name = "pipeline"
         # Create a Secrets Manager client
         session = boto3.session.Session()
-        with session.client(service_name='secretsmanager') as client:
+        client = session.client(service_name='secretsmanager')
         # error info see https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-            try:
-                get_secret_value_response = client.get_secret_value(
-                    SecretId=secret_name
-                )
-            except ClientError as e:
-                if e.response['Error']['Code'] == 'DecryptionFailureException':
-                    # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
-                    # Deal with the exception here, and/or rethrow at your discretion.
-                    raise e
-                elif e.response['Error']['Code'] == 'InternalServiceErrorException':
-                    # An error occurred on the server side.
-                    # Deal with the exception here, and/or rethrow at your discretion.
-                    raise e
-                elif e.response['Error']['Code'] == 'InvalidParameterException':
-                    # You provided an invalid value for a parameter.
-                    # Deal with the exception here, and/or rethrow at your discretion.
-                    raise e
-                elif e.response['Error']['Code'] == 'InvalidRequestException':
-                    # You provided a parameter value that is not valid for the current state of the resource.
-                    # Deal with the exception here, and/or rethrow at your discretion.
-                    raise e
-                elif e.response['Error']['Code'] == 'ResourceNotFoundException':
-                    # We can't find the resource that you asked for.
-                    # Deal with the exception here, and/or rethrow at your discretion.
-                    raise e
+        try:
+            get_secret_value_response = client.get_secret_value(
+                SecretId=secret_name
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'DecryptionFailureException':
+                # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InternalServiceErrorException':
+                # An error occurred on the server side.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InvalidParameterException':
+                # You provided an invalid value for a parameter.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'InvalidRequestException':
+                # You provided a parameter value that is not valid for the current state of the resource.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+            elif e.response['Error']['Code'] == 'ResourceNotFoundException':
+                # We can't find the resource that you asked for.
+                # Deal with the exception here, and/or rethrow at your discretion.
+                raise e
+        else:
+            # Decrypts secret using the associated KMS key.
+            # Depending on whether the secret is a string or binary, one of these fields will be populated.
+            if 'SecretString' in get_secret_value_response:
+                secret = get_secret_value_response['SecretString']
             else:
-                # Decrypts secret using the associated KMS key.
-                # Depending on whether the secret is a string or binary, one of these fields will be populated.
-                if 'SecretString' in get_secret_value_response:
-                    secret = get_secret_value_response['SecretString']
-                else:
-                    secret = base64.b64decode(get_secret_value_response['SecretBinary'])
-                secret = json.loads(secret)#convert to dictionary
+                secret = base64.b64decode(get_secret_value_response['SecretBinary'])
+            secret = json.loads(secret)#convert to dictionary
 
         #assign secrets to appropriate attributes
         for obj in self.data_objs:
@@ -314,12 +326,12 @@ class Pipeline:
 
 if __name__ == '__main__':
 
+    
+    data = [
+        GeoData(),
+        WeatherData(['GA'])
+        ]
 
-    # data = [
-    #     GeoData()
-    #     WeatherData(['GA'])
-    #     ]
 
-
-    # aws_rds_data_pipeline = Pipeline(data)
+    aws_rds_data_pipeline = Pipeline(data)
     print('Complete')
