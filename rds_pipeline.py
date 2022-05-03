@@ -4,23 +4,20 @@ import pandas as pd
 import requests
 import time
 import bs4 as bs
-from sqlalchemy import create_engine, types, sql
+from sqlalchemy import create_engine, types, sql, exc
 import boto3
 import base64
 from botocore.exceptions import ClientError
 import json
+import sys
 
 
 #Notes:
     #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #add error handling for table does not exist
-            #sqlalchemy.exc.ProgrammingError: (MySQLdb._exceptions.ProgrammingError) (1146, "Table 'projects.US_Zips_Counties' doesn't exist")
-            #see if I can regex this error? programmingerror captures several things - https://sqlalche.me/e/14/f405
-        #once schedule method works, test feeding geodata through pipeline
         #test weatherdata schedule method
-        #determine what data format result variables are in
+        #query results can be put into a list, single result pulled from [0]
 
 
 
@@ -177,7 +174,7 @@ class GeoData(DataSource):
         self.source = '''https://www.unitedstateszipcodes.org/'''
         self.format = 'webscraped html to json'
         self.table_name = 'US_Zips_Counties'
-        self.dtypes = {'ZIP_Code': types.String, 'County': types.String, 'State': types.String}
+        self.dtypes = {'ZIP_Code': types.String(length=5), 'County': types.String(length=50), 'State': types.String(length=50)}
         self.df = pd.DataFrame(columns=['ZIP_Code', 'County', 'State'], dtype=str)
         self.States = [
             'AL', 'AR', 'AZ', 'CA', 'CO', 'CT',
@@ -192,13 +189,23 @@ class GeoData(DataSource):
 
     def schedule(self):
         super().schedule()
-        query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
+        
         with self.db_engine.connect() as connection:
-            result = connection.execute(sql.text(query))
-        if result.year < datetime.date.today().year:
-            return True
-        else:
-            return False
+            query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
+            tbls = connection.execute(sql.text(query))
+            tbls = [tbl for tbl, in tbls]
+            if self.table_name in tbls:
+                query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
+                result = connection.execute(sql.text(query))
+                result = [r for r, in result][0]
+                if result.year < datetime.date.today().year:
+                    return True
+                else:
+                    logging.info(f'''{type(self).__name__} not scheduled''')
+                    return False
+            else:
+                print(f'''{self.table_name} not found in information_schema.tables, scheduling pull''')
+                return True #schedule pull if table doesn't exist in database
 
     def extract(self):
         for state in self.States:
@@ -238,10 +245,15 @@ class GeoData(DataSource):
                 table = {'ZIP_Code': zips, 'County': counties, 'State': sts}#attach our data to column names
                 df1 = pd.DataFrame(data=table, dtype=str)#put in dataframe to easily append
                 df1['Date_Pulled'] = datetime.date.today()#add date column
-                self.df = self.df.append(df1)#add to our dataframe
+                self.df = pd.concat([self.df, df1], ignore_index=True)#add to our dataframe
                 logging.info(f'''{state} Zips and Counties scraped successfully!''')
 
-
+    def load(self):
+        #open connection
+        with self.db_engine.connect() as connection:
+            #replace table
+            self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
+        logging.info(f'''Replaced table {self.table_name}''')
 
 
 
@@ -330,8 +342,8 @@ if __name__ == '__main__':
 
     
     data = [
-        GeoData(),
-        WeatherData(['GA'])
+        GeoData()
+        #WeatherData(['GA'])
         ]
 
 
