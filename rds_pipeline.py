@@ -13,10 +13,15 @@ import sys
 
 
 #Notes:
-    #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
+    #https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #determine why weather data ingestion isn't limited to weather columns attribute
+        #add check in weather data if additional state(s) were added but todays run already done
+        #testing and adding try/excepts
+            #test if additional field added, ingesting to db works smoothly
+        #host on lambda function
+        #create git branching for continuous development
+        #determine means of deployment
 
 
 
@@ -128,15 +133,17 @@ class WeatherData(DataSource):
                 #determine if enough requests are available for another pull
                 self.requests = self.retrieve_monthly_req(connection)
                 if self.requests > 0:
+                    logging.info(f'''{type(self).__name__} scheduled''')
                     return True
                 else:
-                    logging.warning(f'''Not enough {self.table_name} requests available for month, new data will not be pulled.''')
+                    logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
                     return False
             else:
-                logging.info(f'''{self.table_name} data already up to date''')
+                logging.info(f'''{type(self).__name__} not scheduled, data already up to date''')
                 return False
 
     def extract(self):
+        logging.info(f"Requesting API for {len(self.zipcodes)} zip codes")
         counter = 0
         for zip in self.zipcodes:
             try:
@@ -167,17 +174,22 @@ class WeatherData(DataSource):
             self.df = self.clean_and_append(result.json(), zip)
             counter += 1
             #data pull progress display
-            sys.stdout.write((f'''{round(((counter / len(self.zipcodes)) * 100),2)}%\
+            sys.stdout.write((f'''{datetime.datetime.now().isoformat()} - WeatherData Progress {round(((counter / len(self.zipcodes)) * 100),2)}%\
                                                     \r'''
             ))
             sys.stdout.flush()
 
     def clean_and_append(self, json_dict, zip):#specific for weather data
+        #dictionary address for weather data
+        #other available fields in "astro" and "hour" (replaces "day")
         json_1 = json_dict["forecast"]["forecastday"][0]["day"]
-        cleaned_json_result = {k:json_1[k] for k in json_1 if k != 'condition'}
-        cleaned_json_result["ZIP_Code"] = zip
-        cleaned_json_result["Date"] = self.yesterday
-        result_df = pd.DataFrame(cleaned_json_result, index=[0]).astype('str')#need to pass index because it's single row dict
+        #add and trim fields
+        json_1["ZIP_Code"] = zip
+        json_1["Date"] = self.yesterday
+        keep_col = ["ZIP_Code", "Date"] + self.weather_data_col#determine cols to keep
+        cleaned_json_result = {k: [json_1[k]] for k in json_1 if k in keep_col}#remove unwanted fields
+        #place in df and append
+        result_df = pd.DataFrame(cleaned_json_result).astype('str')
         result_df[self.weather_data_col] = result_df[self.weather_data_col].astype('float')
         return pd.concat([self.df, result_df])
 
@@ -216,6 +228,7 @@ class GeoData(DataSource):
                 result = connection.execute(sql.text(query))
                 result = [r for r, in result][0]
                 if result.year < datetime.date.today().year:
+                    logging.info(f'''{type(self).__name__} scheduled''')
                     return True
                 else:
                     logging.info(f'''{type(self).__name__} not scheduled''')
