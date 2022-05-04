@@ -19,6 +19,8 @@ import sys
         #add check in weather data if additional state(s) were added but todays run already done
         #testing and adding try/excepts
             #test if additional field added, ingesting to db works smoothly
+            #test logging and progress indicator compatibility
+                #does each logging call create new line or does sys.flush replace it like normal?
         #host on lambda function
         #create git branching for continuous development
         #determine means of deployment
@@ -143,9 +145,10 @@ class WeatherData(DataSource):
                 return False
 
     def extract(self):
-        logging.info(f"Requesting API for {len(self.zipcodes)} zip codes")
+        logging.info(f"""Requesting API for {len(self.zipcodes)} zip codes\n""")
         counter = 0
         for zip in self.zipcodes:
+            sys.stdout.flush()
             try:
                 result = requests.get(url=f'''{self.source}?key={self.APIkey}&q={zip}&dt={self.yesterday}''')#create response obj
                 result.raise_for_status()
@@ -174,10 +177,12 @@ class WeatherData(DataSource):
             self.df = self.clean_and_append(result.json(), zip)
             counter += 1
             #data pull progress display
-            sys.stdout.write((f'''{datetime.datetime.now().isoformat()} - WeatherData Progress {round(((counter / len(self.zipcodes)) * 100),2)}%\
+            progress = round(((counter / len(self.zipcodes)) * 100),2)
+            sys.stdout.write((f'''{datetime.datetime.now().isoformat()} - WeatherData Progress: {progress}%\
                                                     \r'''
             ))
-            sys.stdout.flush()
+
+            
 
     def clean_and_append(self, json_dict, zip):#specific for weather data
         #dictionary address for weather data
