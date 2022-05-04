@@ -16,8 +16,7 @@ import sys
     #use engine.connect() to open db connection https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #test weatherdata schedule method
-        #query results can be put into a list, single result pulled from [0]
+        #determine why weather data ingestion isn't limited to weather columns attribute
 
 
 
@@ -47,9 +46,6 @@ class DataSource:
     def extract(self):
         pass
 
-    def clean(self):
-        pass
-
     def load(self):
         #open connection
         with self.db_engine.connect() as connection:
@@ -73,60 +69,75 @@ class WeatherData(DataSource):
         self.APIkey = None
 
 
-    def retrieve_last_pull(self):
-        query = f'''SELECT MAX(Date) FROM {self.table_name}'''
-        with self.db_engine.connect() as connection:
+    def retrieve_last_pull(self, connection):
+        query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
+        tbls = connection.execute(sql.text(query))
+        tbls = [tbl for tbl, in tbls]
+        if self.table_name in tbls:
+            query = f'''SELECT MAX(Date) FROM {self.table_name}'''
             result = connection.execute(sql.text(query))
-        return result
+            result = datetime.date.fromisoformat([r for r, in result][0]) 
+            return result
+        else:
+            result = self.yesterday - datetime.timedelta(days=1)
+            return result
 
-    def retrieve_monthly_req(self):
+    def retrieve_monthly_req(self, connection):
         curr_month = datetime.date.today().month
         curr_year = datetime.date.today().year
         #determine if a pull has been made this month or not
         if (self.last_pull.month < curr_month
         or self.last_pull.year < curr_year):    
         #if last pull is not this month or this year (account for year change):
-            self.requests = 0
             logging.info(f'{self.table_name} first pull of the month, monthly request limit reset, may want to verify manually')
+            return 1000000   
         else:
-            #query database to determine requests made month to date
-            query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE MONTH(Date) = {curr_month}'''
-            with self.db_engine.connect() as connection:
+            query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
+            tbls = connection.execute(sql.text(query))
+            tbls = [tbl for tbl, in tbls]
+            if self.table_name in tbls:
+                #query database to determine requests made month to date
+                query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE MONTH(Date) = {curr_month}'''
                 result = connection.execute(sql.text(query))
-            #subtract from monthly limit
-            reqs = 1000000 - result - len(self.zipcodes)
-            #return number of requests available
-            return reqs
+                #subtract from monthly limit
+                result = [r for r, in result][0]
+                reqs = 1000000 - result - len(self.zipcodes)
+                #return number of requests available
+                return reqs
+            else:
+                return 1000000
 
-    def retrieve_zips(self, st):
+    def retrieve_zips(self, st, connection):
         #query database geo data, return list of zip codes based on self.states
-        query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = {st}'''
-        with self.db_engine.connect() as connection:
-            result = connection.execute(sql.text(query))
+        query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = '{st}' '''
+        result = connection.execute(sql.text(query))
+        result = [r for r, in result]
         return result
 
     def schedule(self):
         super().schedule()
         #determine last data ingestion
-        self.last_pull = self.retrieve_last_pull()
-        #determine if it was run for yesterday's data
-        if self.last_pull < self.yesterday:
-            #grab list of zipcodes to pass to api calls
-            self.zipcodes = []
-            for state in self.states:
-                self.zipcodes += self.retrieve_zips(state)
-            #determine if enough requests are available for another pull
-            self.requests = self.retrieve_monthly_req()
-            if self.requests > 0:
-                return True
+        with self.db_engine.connect() as connection:
+            self.last_pull = self.retrieve_last_pull(connection)
+            #determine if it was run for yesterday's data
+            if self.last_pull < self.yesterday:
+                #grab list of zipcodes to pass to api calls
+                self.zipcodes = []
+                for state in self.states:
+                    self.zipcodes += self.retrieve_zips(state, connection)
+                #determine if enough requests are available for another pull
+                self.requests = self.retrieve_monthly_req(connection)
+                if self.requests > 0:
+                    return True
+                else:
+                    logging.warning(f'''Not enough {self.table_name} requests available for month, new data will not be pulled.''')
+                    return False
             else:
-                logging.warning(f'''Not enough {self.table_name} requests available for month, new data will not be pulled.''')
+                logging.info(f'''{self.table_name} data already up to date''')
                 return False
-        else:
-            logging.info(f'''{self.table_name} data already up to date''')
-            return False
 
     def extract(self):
+        counter = 0
         for zip in self.zipcodes:
             try:
                 result = requests.get(url=f'''{self.source}?key={self.APIkey}&q={zip}&dt={self.yesterday}''')#create response obj
@@ -153,7 +164,13 @@ class WeatherData(DataSource):
                 logging.error(e)
                 continue
             #add to df
-            self.df = self.clean_and_append(result.json, zip)
+            self.df = self.clean_and_append(result.json(), zip)
+            counter += 1
+            #data pull progress display
+            sys.stdout.write((f'''{round(((counter / len(self.zipcodes)) * 100),2)}%\
+                                                    \r'''
+            ))
+            sys.stdout.flush()
 
     def clean_and_append(self, json_dict, zip):#specific for weather data
         json_1 = json_dict["forecast"]["forecastday"][0]["day"]
@@ -162,7 +179,7 @@ class WeatherData(DataSource):
         cleaned_json_result["Date"] = self.yesterday
         result_df = pd.DataFrame(cleaned_json_result, index=[0]).astype('str')#need to pass index because it's single row dict
         result_df[self.weather_data_col] = result_df[self.weather_data_col].astype('float')
-        return self.df.append(result_df)
+        return pd.concat([self.df, result_df])
 
 
 
@@ -317,7 +334,7 @@ class Pipeline:
         for obj in self.data_objs:
             #if statements to assign api keys to appropriate data objects
             if obj.table_name == 'Daily_Weather':
-                obj.APIKey = secret['weatherapi']
+                obj.APIkey = secret['weatherapi']
 
         self.hostname = secret['dbhost']
         self.dbname = secret['dbname']
@@ -342,8 +359,8 @@ if __name__ == '__main__':
 
     
     data = [
-        GeoData()
-        #WeatherData(['GA'])
+        GeoData(),
+        WeatherData(['GA'])
         ]
 
 
