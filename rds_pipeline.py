@@ -13,6 +13,7 @@ import sys
     #https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
+        #finish lambda deployment
         #testing and adding try/excepts
         #create git branching for continuous development
         #determine means of deployment
@@ -132,9 +133,8 @@ class Pipeline:
 
 
 
-if __name__ == '__main__':
- 
 
+def run_pipeline():
     data = [
         GeoData(),
         WeatherData(['GA'])
@@ -144,5 +144,9 @@ if __name__ == '__main__':
         
     ]
 
-    aws_rds_data_pipeline = Pipeline(sources=data, forcedupdatesources=manual)
+    Pipeline(sources=data, forcedupdatesources=manual)
     print('Complete')
+
+if __name__ == '__main__':
+ 
+    run_pipeline()

@@ -319,3 +319,11 @@ class GeoData(DataSource):
             #replace table
             self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
         logging.info(f'''Replaced table, {self.table_name} now up to date''')
+
+
+
+
+
+if __name__ == '__main__':
+    pass
+    #add any tests here
