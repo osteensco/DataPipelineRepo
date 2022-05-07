@@ -16,11 +16,8 @@ import sys
     #https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #add check in weather data if additional state(s) were added but todays run already done
+        #ADDING ADDITIONAL FIELDS FOR WeatherData IS BROKEN***
         #testing and adding try/excepts
-            #test if additional field added, ingesting to db works smoothly
-            #test logging and progress indicator compatibility
-                #does each logging call create new line or does sys.flush replace it like normal?
         #host on lambda function
         #create git branching for continuous development
         #determine means of deployment
@@ -41,9 +38,11 @@ class DataSource:
         self.db_engine = None
         self.table_name = None
         self.dtypes = {}
-        self.destination = None
+        self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
+        self.overwrite = None #date passed to Delete query for manually scheduled data pulls, avoids duplicate entries
 
-    def schedule(self):
+    def schedule(self, secrets):
+        self.secrets = secrets
         # used for determine if data should be ingested
         # Returns True/False
         # Create SQLAlchemy engine for connection to MySQL Database
@@ -53,12 +52,42 @@ class DataSource:
     def extract(self):
         pass
 
-    def load(self):
+    def load(self, dtypes):
+        if not self.schedule(self.secrets):#if manually scheduled
+            with self.db_engine.connect() as connection:
+                query = f'''DELETE FROM {self.table_name} WHERE Date = {self.overwrite}'''
+                connection.execute(sql.text(query))
+            logging.info(f'Removed any duplicate data from {self.table_name}, table cleaned for landing new pull')
         #open connection
         with self.db_engine.connect() as connection:
+            #check if columns in df match up to columns in landing table
+            colcheck = f'''SELECT COLUMN_NAME \
+                        FROM INFORMATION_SCHEMA.COLUMNS \
+                        WHERE TABLE_SCHEMA = 'projects' \
+                        AND TABLE_NAME = '{self.table_name}'
+                        '''
+            dbcols = connection.execute(sql.text(colcheck))
+            dbcols = [c for c, in dbcols]                        
+            for col in self.df.columns:
+                if col in dbcols:
+                    continue
+                else:
+                    dtype = None
+                    for key, value in dtypes.items():#sql alchemy type to sql syntax conversion
+                        if value == self.dtypes[col]:
+                            dtype = key
+                            break
+                    if dtype:
+                        addcol = f'''ALTER TABLE {self.table_name} \
+                            ADD COLUMN {col} {dtype} FIRST
+                        '''
+                        connection.execute(sql.text(addcol))
+                    else:
+                        logging.CRITICAL(f'''Type {self.dtypes[col]} not found in Pipeline SQL Syntax conversion dictionary, data pull for {self.table_name} failed''')
+                        return None
             #land in appropriate tables
             self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
-
+            logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
 
 
@@ -69,7 +98,7 @@ class WeatherData(DataSource):
         self.source = '''http://api.weatherapi.com/v1/history.json'''
         self.format = 'json'
         self.states = states #list of state abbreviation strings, all caps
-        self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
+        self.weather_data_col = ['avgtemp_f', 'totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
         self.dtypes = {i: types.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
@@ -121,28 +150,43 @@ class WeatherData(DataSource):
         result = [r for r, in result]
         return result
 
-    def schedule(self):
-        super().schedule()
+    def schedule(self, secrets):
+        super().schedule(secrets)
         #determine last data ingestion
         with self.db_engine.connect() as connection:
             self.last_pull = self.retrieve_last_pull(connection)
-            #determine if it was run for yesterday's data
-            if self.last_pull < self.yesterday:
-                #grab list of zipcodes to pass to api calls
-                self.zipcodes = []
-                for state in self.states:
-                    self.zipcodes += self.retrieve_zips(state, connection)
-                #determine if enough requests are available for another pull
-                self.requests = self.retrieve_monthly_req(connection)
-                if self.requests > 0:
-                    logging.info(f'''{type(self).__name__} scheduled''')
-                    return True
-                else:
-                    logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
-                    return False
+            if self.scheduled:#if already scheduled by override, return False for logic check in load method
+                self.overwrite = self.yesterday
+                with self.db_engine.connect() as connection:
+                    self.zipcodes = []
+                    for state in self.states:
+                        self.zipcodes += self.retrieve_zips(state, connection)
+                    #determine if enough requests are available for another pull
+                    self.requests = self.retrieve_monthly_req(connection)
+                    if self.requests > 0:
+                        logging.info(f'''enough requests for {type(self).__name__}, continuing''')
+                        return False
+                    else:
+                        logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
+                        self.scheduled = False #override manual schedule if not enough requests available
             else:
-                logging.info(f'''{type(self).__name__} not scheduled, data already up to date''')
-                return False
+                #determine if it was run for yesterday's data
+                if self.last_pull < self.yesterday:
+                    #grab list of zipcodes to pass to api calls
+                    self.zipcodes = []
+                    for state in self.states:
+                        self.zipcodes += self.retrieve_zips(state, connection)
+                    #determine if enough requests are available for another pull
+                    self.requests = self.retrieve_monthly_req(connection)
+                    if self.requests > 0:
+                        logging.info(f'''{type(self).__name__} scheduled''')
+                        return True
+                    else:
+                        logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
+                        return False
+                else:
+                    logging.info(f'''{type(self).__name__} not scheduled, data already up to date''')
+                    return False
 
     def extract(self):
         logging.info(f"""Requesting API for {len(self.zipcodes)} zip codes\n""")
@@ -152,8 +196,15 @@ class WeatherData(DataSource):
             try:
                 result = requests.get(url=f'''{self.source}?key={self.APIkey}&q={zip}&dt={self.yesterday}''')#create response obj
                 result.raise_for_status()
-            except requests.exceptions.HTTPError:
+            except requests.exceptions.HTTPError as err:
+                logging.error(f'''{err}''')
                 logging.info(f'''{zip} is an invalid zipcode according to weatherapi, skipping...''')
+                counter += 1
+                #data pull progress display
+                progress = round(((counter / len(self.zipcodes)) * 100),2)
+                sys.stdout.write((f'''{datetime.datetime.now().isoformat()} - WeatherData Progress: {progress}%\
+                                                        \r'''
+                ))
                 continue
             except requests.exceptions.Timeout:
                 logging.warning("timeout occured, trying again after 30 sec...")
@@ -221,8 +272,8 @@ class GeoData(DataSource):
             'VA', 'VT', 'WA', 'WI', 'WV', 'WY'
         ]
 
-    def schedule(self):
-        super().schedule()
+    def schedule(self, secrets):
+        super().schedule(secrets)
         
         with self.db_engine.connect() as connection:
             query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
@@ -232,7 +283,7 @@ class GeoData(DataSource):
                 query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
                 result = connection.execute(sql.text(query))
                 result = [r for r, in result][0]
-                if result.year < datetime.date.today().year:
+                if result.year < datetime.date.today().year:#schedule to run every new year
                     logging.info(f'''{type(self).__name__} scheduled''')
                     return True
                 else:
@@ -244,7 +295,7 @@ class GeoData(DataSource):
 
     def extract(self):
         for state in self.States:
-            r = requests.get(url=f'''https://www.unitedstateszipcodes.org/{state.lower()}/#zips-list''', 
+            r = requests.get(url=f'''{self.source}/{state.lower()}/#zips-list''', 
             headers={'''User-Agent''': '''Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'''})
             try:
                 r.raise_for_status()
@@ -288,17 +339,25 @@ class GeoData(DataSource):
         with self.db_engine.connect() as connection:
             #replace table
             self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
-        logging.info(f'''Replaced table {self.table_name}''')
+        logging.info(f'''Replaced table, {self.table_name} now up to date''')
 
 
 
 
 class Pipeline:
-    def __init__(self, sources) -> None:
+    def __init__(self, sources, forcedupdatesources=[]) -> None:
         self.timestamp = datetime.datetime.now()
         self.data_objs = sources
+        self.override_scheduling = forcedupdatesources
+        self.dtype_convert = {
+                            'FLOAT': types.FLOAT,
+                            'STRING': types.String,
+                            'INT': types.INTEGER,
+                            'DATE': types.DATE,
+                            'BOOLEAN': types.Boolean
+                            }
         self.init_log()
-        #logs land in a table in rds database as well
+        #add method so that logs land in a table in rds database as well
         self.secrets = self.retrieve_secrets()
         self.run()
 
@@ -321,23 +380,18 @@ class Pipeline:
         except ClientError as e:
             if e.response['Error']['Code'] == 'DecryptionFailureException':
                 # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
-                # Deal with the exception here, and/or rethrow at your discretion.
                 raise e
             elif e.response['Error']['Code'] == 'InternalServiceErrorException':
                 # An error occurred on the server side.
-                # Deal with the exception here, and/or rethrow at your discretion.
                 raise e
             elif e.response['Error']['Code'] == 'InvalidParameterException':
                 # You provided an invalid value for a parameter.
-                # Deal with the exception here, and/or rethrow at your discretion.
                 raise e
             elif e.response['Error']['Code'] == 'InvalidRequestException':
                 # You provided a parameter value that is not valid for the current state of the resource.
-                # Deal with the exception here, and/or rethrow at your discretion.
                 raise e
             elif e.response['Error']['Code'] == 'ResourceNotFoundException':
                 # We can't find the resource that you asked for.
-                # Deal with the exception here, and/or rethrow at your discretion.
                 raise e
         else:
             # Decrypts secret using the associated KMS key.
@@ -349,7 +403,8 @@ class Pipeline:
             secret = json.loads(secret)#convert to dictionary
 
         #assign secrets to appropriate attributes
-        for obj in self.data_objs:
+        allobjs = self.data_objs + self.override_scheduling
+        for obj in allobjs:
             #if statements to assign api keys to appropriate data objects
             if obj.table_name == 'Daily_Weather':
                 obj.APIkey = secret['weatherapi']
@@ -361,26 +416,48 @@ class Pipeline:
 
         return [self.hostname, self.dbname, self.uname, self.pwd]
 
-    def run(self):
+    def manual_schedule(self):#identify data sources that should bypass schedule method
+        if self.override_scheduling:
+            for data in self.override_scheduling:
+                data.scheduled = True
+                self.data_objs.append(data)
+                logging.info(f'''{type(data).__name__} manual pull, scheduled''')
+        else:
+            pass
+
+    def schedule(self):
+        #open connection to db, query db to determine if data source is scheduled to be ingested
+        #also passes secrets to object for db connection
         for data in self.data_objs:
-            # pass secrets to object for db connection
-            data.secrets = self.secrets
-            #open connection to db, query db to determine if data source is scheduled to be ingested
-            if data.schedule():
+            if data not in self.override_scheduling:
+                data.scheduled = data.schedule(self.secrets)
+            else:
+                #if overriding scheduling, we don't assign result
+                #method still needs to be called to query data needed for pull
+                data.schedule(self.secrets)
+
+
+    def run(self):
+        self.manual_schedule()
+        self.schedule()
+        for data in self.data_objs:
+            if data.scheduled:
                 data.extract()
-                data.load()
+                data.load(self.dtype_convert)
 
 
 
 
 if __name__ == '__main__':
-
-    
+ 
     data = [
         GeoData(),
-        WeatherData(['GA'])
+        
         ]
 
+    manual = [
+        WeatherData(['GA'])
+    ]
 
-    aws_rds_data_pipeline = Pipeline(data)
+    aws_rds_data_pipeline = Pipeline(sources=data, forcedupdatesources=manual)
     print('Complete')
