@@ -55,7 +55,7 @@ class DataSource:
     def load(self, dtypes):
         if not self.schedule(self.secrets):#if manually scheduled
             with self.db_engine.connect() as connection:
-                query = f'''DELETE FROM {self.table_name} WHERE Date = {self.overwrite}'''
+                query = f'''DELETE FROM {self.table_name} WHERE Date = '{self.overwrite}' '''
                 connection.execute(sql.text(query))
             logging.info(f'Removed any duplicate data from {self.table_name}, table cleaned for landing new pull')
         #open connection
@@ -98,7 +98,7 @@ class WeatherData(DataSource):
         self.source = '''http://api.weatherapi.com/v1/history.json'''
         self.format = 'json'
         self.states = states #list of state abbreviation strings, all caps
-        self.weather_data_col = ['avgtemp_f', 'totalprecip_in']#columns from weather data we want to use
+        self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
         self.dtypes = {i: types.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
@@ -156,19 +156,19 @@ class WeatherData(DataSource):
         with self.db_engine.connect() as connection:
             self.last_pull = self.retrieve_last_pull(connection)
             if self.scheduled:#if already scheduled by override, return False for logic check in load method
+                if self.df.shape[0] > 0:#exit ramp for logic in load method
+                    return False
                 self.overwrite = self.yesterday
-                with self.db_engine.connect() as connection:
-                    self.zipcodes = []
-                    for state in self.states:
-                        self.zipcodes += self.retrieve_zips(state, connection)
-                    #determine if enough requests are available for another pull
-                    self.requests = self.retrieve_monthly_req(connection)
-                    if self.requests > 0:
-                        logging.info(f'''enough requests for {type(self).__name__}, continuing''')
-                        return False
-                    else:
-                        logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
-                        self.scheduled = False #override manual schedule if not enough requests available
+                self.zipcodes = []
+                for state in self.states:
+                    self.zipcodes += self.retrieve_zips(state, connection)
+                #determine if enough requests are available for another pull
+                self.requests = self.retrieve_monthly_req(connection)
+                if self.requests > 0:
+                    logging.info(f'''enough requests for {type(self).__name__}, continuing''')
+                else:
+                    logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
+                    self.scheduled = False #override manual schedule if not enough requests available
             else:
                 #determine if it was run for yesterday's data
                 if self.last_pull < self.yesterday:
@@ -450,13 +450,14 @@ class Pipeline:
 
 if __name__ == '__main__':
  
+
     data = [
         GeoData(),
-        
+        WeatherData(['GA'])
         ]
 
     manual = [
-        WeatherData(['GA'])
+        
     ]
 
     aws_rds_data_pipeline = Pipeline(sources=data, forcedupdatesources=manual)
