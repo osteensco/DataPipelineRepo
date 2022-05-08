@@ -1,2 +1,5 @@
 /env
 /awsaccess.csv
+/__pycache__
+/lambda_deployment
+/lambda_deployment.zip
