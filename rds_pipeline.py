@@ -79,14 +79,14 @@ class Pipeline:
             elif e.response['Error']['Code'] == 'ResourceNotFoundException':
                 # We can't find the resource that you asked for.
                 raise e
+
+        # Decrypts secret using the associated KMS key.
+        # Depending on whether the secret is a string or binary, one of these fields will be populated.
+        if 'SecretString' in get_secret_value_response:
+            secret = get_secret_value_response['SecretString']
         else:
-            # Decrypts secret using the associated KMS key.
-            # Depending on whether the secret is a string or binary, one of these fields will be populated.
-            if 'SecretString' in get_secret_value_response:
-                secret = get_secret_value_response['SecretString']
-            else:
-                secret = base64.b64decode(get_secret_value_response['SecretBinary'])
-            secret = json.loads(secret)#convert to dictionary
+            secret = base64.b64decode(get_secret_value_response['SecretBinary'])
+        secret = json.loads(secret)#convert to dictionary
 
         #assign secrets to appropriate attributes
         allobjs = self.data_objs + self.override_scheduling
@@ -148,5 +148,5 @@ def run_pipeline():
     print('Complete')
 
 if __name__ == '__main__':
- 
+    
     run_pipeline()
