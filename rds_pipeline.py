@@ -16,7 +16,7 @@ import sys
         #finish lambda deployment
         #testing and adding try/excepts
         #create git branching for continuous development
-        #determine means of deployment
+        #look at github actions for deployment automation
 
 
 
