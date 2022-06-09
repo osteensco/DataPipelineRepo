@@ -1,5 +1,7 @@
 import datetime
 import logging
+import pymysql
+pymysql.install_as_MySQLdb()
 from sqlalchemy import types
 import boto3
 import base64

@@ -3,6 +3,8 @@ import pandas as pd
 import requests
 import time
 import bs4 as bs
+import pymysql
+pymysql.install_as_MySQLdb()
 from sqlalchemy import create_engine, types, sql
 import logging
 import sys
@@ -25,7 +27,7 @@ class DataSource:
         # used for determine if data should be ingested
         # Returns True/False
         # Create SQLAlchemy engine for connection to MySQL Database
-        self.db_engine = create_engine(f'''mysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
+        self.db_engine = create_engine(f'''mysql+pymysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
