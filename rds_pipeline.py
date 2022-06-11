@@ -1,7 +1,6 @@
 import datetime
 import logging
-import pymysql
-pymysql.install_as_MySQLdb()
+from google.cloud import bigquery
 from sqlalchemy import types
 import boto3
 import base64
@@ -21,7 +20,7 @@ import sys
         #look at github actions for deployment automation
 
 
-
+#gcloud auth application-default login
 
 
 
@@ -38,11 +37,11 @@ class Pipeline:
         self.data_objs = sources
         self.override_scheduling = forcedupdatesources
         self.dtype_convert = {
-                            'FLOAT': types.FLOAT,
-                            'STRING': types.String,
-                            'INT': types.INTEGER,
-                            'DATE': types.DATE,
-                            'BOOLEAN': types.Boolean
+                            'FLOAT': bigquery.enums.SqlTypeNames.FLOAT,
+                            'STRING': bigquery.enums.SqlTypeNames.String,
+                            'INT': bigquery.enums.SqlTypeNames.INTEGER,
+                            'DATE': bigquery.enums.SqlTypeNames.DATE,
+                            'BOOLEAN': bigquery.enums.SqlTypeNames.Boolean
                             }
         self.init_log()
         #add method so that logs land in a table in rds database as well
@@ -150,5 +149,11 @@ def run_pipeline():
     print('Complete')
 
 if __name__ == '__main__':
-    
-    run_pipeline()
+
+    # run_pipeline()
+
+    #GBQ test
+    client = bigquery.Client('portfolio-project-353016')
+    q = '''SELECT * FROM `portfolio-project-353016.ALL.test_table`'''
+    df = client.query(q).result().to_dataframe()
+    print(df)

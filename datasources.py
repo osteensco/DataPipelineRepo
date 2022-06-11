@@ -3,8 +3,7 @@ import pandas as pd
 import requests
 import time
 import bs4 as bs
-import pymysql
-pymysql.install_as_MySQLdb()
+from google.cloud import bigquery
 from sqlalchemy import create_engine, types, sql
 import logging
 import sys
@@ -27,7 +26,8 @@ class DataSource:
         # used for determine if data should be ingested
         # Returns True/False
         # Create SQLAlchemy engine for connection to MySQL Database
-        self.db_engine = create_engine(f'''mysql+pymysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
+        self.db_engine = bigquery.Client('portfolio-project-353016')
+        # self.db_engine = create_engine(f'''mysql+pymysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
@@ -35,40 +35,44 @@ class DataSource:
 
     def load(self, dtypes):
         if not self.schedule(self.secrets):#if manually scheduled
-            with self.db_engine.connect() as connection:
-                query = f'''DELETE FROM {self.table_name} WHERE Date = '{self.overwrite}' '''
-                connection.execute(sql.text(query))
+            # with self.db_engine.connect() as connection:
+            delete_tbl = f'''DELETE FROM {self.table_name} WHERE Date = '{self.overwrite}' '''
+                # connection.execute(sql.text(query))
+            self.db_engine.query(delete_tbl)
             logging.info(f'Removed any duplicate data from {self.table_name}, table cleaned for landing new pull')
         #open connection
-        with self.db_engine.connect() as connection:
+        # with self.db_engine.connect() as connection:
             #check if columns in df match up to columns in landing table
-            colcheck = f'''SELECT COLUMN_NAME \
-                        FROM INFORMATION_SCHEMA.COLUMNS \
-                        WHERE TABLE_SCHEMA = 'projects' \
-                        AND TABLE_NAME = '{self.table_name}'
-                        '''
-            dbcols = connection.execute(sql.text(colcheck))
-            dbcols = [c for c, in dbcols]                        
-            for col in self.df.columns:
-                if col in dbcols:
-                    continue
+        colcheck = f'''SELECT COLUMN_NAME \
+                    FROM INFORMATION_SCHEMA.COLUMNS \
+                    WHERE TABLE_SCHEMA = 'projects' \
+                    AND TABLE_NAME = '{self.table_name}'
+                    '''
+        # dbcols = connection.execute(sql.text(colcheck))
+        dbcols = self.db_engine.query(colcheck)
+        dbcols = [c for c, in dbcols]                        
+        for col in self.df.columns:
+            if col in dbcols:
+                continue
+            else:
+                dtype = None
+                for key, value in dtypes.items():#sql alchemy type to sql syntax conversion
+                    if value == self.dtypes[col]:
+                        dtype = key
+                        break
+                if dtype:
+                    addcol = f'''ALTER TABLE {self.table_name} \
+                        ADD COLUMN {col} {dtype} FIRST
+                    '''
+                    # connection.execute(sql.text(addcol))
+                    self.db_engine.query(addcol)
                 else:
-                    dtype = None
-                    for key, value in dtypes.items():#sql alchemy type to sql syntax conversion
-                        if value == self.dtypes[col]:
-                            dtype = key
-                            break
-                    if dtype:
-                        addcol = f'''ALTER TABLE {self.table_name} \
-                            ADD COLUMN {col} {dtype} FIRST
-                        '''
-                        connection.execute(sql.text(addcol))
-                    else:
-                        logging.CRITICAL(f'''Type {self.dtypes[col]} not found in Pipeline SQL Syntax conversion dictionary, data pull for {self.table_name} failed''')
-                        return None
-            #land in appropriate tables
-            self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
-            logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
+                    logging.CRITICAL(f'''Type {self.dtypes[col]} not found in Pipeline SQL Syntax conversion dictionary, data pull for {self.table_name} failed''')
+                    return None
+        #land in appropriate tables
+        # self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
+        self.db_engine.load_table_from_dataframe(self.df,self.table_name,bigquery.LoadJobConfig())
+        logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
 
 
@@ -81,7 +85,7 @@ class WeatherData(DataSource):
         self.states = states #list of state abbreviation strings, all caps
         self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
-        self.dtypes = {i: types.FLOAT for i in self.weather_data_col}
+        self.dtypes = {i: bigquery.enums.SqlTypeNames.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
         self.APIkey = None
 
@@ -240,7 +244,11 @@ class GeoData(DataSource):
         self.source = '''https://www.unitedstateszipcodes.org/'''
         self.format = 'webscraped html to json'
         self.table_name = 'US_Zips_Counties'
-        self.dtypes = {'ZIP_Code': types.String(length=5), 'County': types.String(length=50), 'State': types.String(length=50)}
+        self.dtypes = {
+            'ZIP_Code': bigquery.enums.SqlTypeNames.STRING,
+            'County': bigquery.enums.SqlTypeNames.STRING,
+            'State': bigquery.enums.SqlTypeNames.STRING
+            }
         self.df = pd.DataFrame(columns=['ZIP_Code', 'County', 'State'], dtype=str)
         self.States = [
             'AL', 'AR', 'AZ', 'CA', 'CO', 'CT',
