@@ -44,12 +44,11 @@ class DataSource:
         # with self.db_engine.connect() as connection:
             #check if columns in df match up to columns in landing table
         colcheck = f'''SELECT COLUMN_NAME \
-                    FROM INFORMATION_SCHEMA.COLUMNS \
-                    WHERE TABLE_SCHEMA = 'projects' \
-                    AND TABLE_NAME = '{self.table_name}'
+                    FROM `portfolio-project-353016.ALL.INFORMATION_SCHEMA.COLUMNS` \
+                    WHERE TABLE_NAME = '{self.table_name}'
                     '''
         # dbcols = connection.execute(sql.text(colcheck))
-        dbcols = self.db_engine.query(colcheck)
+        dbcols = self.db_engine.query(colcheck).result().to_dataframe()
         dbcols = [c for c, in dbcols]                        
         for col in self.df.columns:
             if col in dbcols:
@@ -62,7 +61,7 @@ class DataSource:
                         break
                 if dtype:
                     addcol = f'''ALTER TABLE {self.table_name} \
-                        ADD COLUMN {col} {dtype} FIRST
+                        ADD COLUMN {col} {dtype}
                     '''
                     # connection.execute(sql.text(addcol))
                     self.db_engine.query(addcol)
@@ -71,7 +70,9 @@ class DataSource:
                     return None
         #land in appropriate tables
         # self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
-        self.db_engine.load_table_from_dataframe(self.df,self.table_name,bigquery.LoadJobConfig())
+        loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
+        loadjob.write_disposition = 'WRITE_APPEND'
+        self.db_engine.load_table_from_dataframe(self.df, self.table_name, loadjob).result()
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
 
@@ -90,20 +91,22 @@ class WeatherData(DataSource):
         self.APIkey = None
 
 
-    def retrieve_last_pull(self, connection):
-        query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
-        tbls = connection.execute(sql.text(query))
+    def retrieve_last_pull(self):
+        query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
+        tbls = self.db_engine.query(query).result().to_dataframe()
+        print(tbls)
         tbls = [tbl for tbl, in tbls]
         if self.table_name in tbls:
             query = f'''SELECT MAX(Date) FROM {self.table_name}'''
-            result = connection.execute(sql.text(query))
+            result = self.db_engine.query(query).result().to_dataframe()
+            print(result)
             result = datetime.date.fromisoformat([r for r, in result][0]) 
             return result
         else:
             result = self.yesterday - datetime.timedelta(days=1)
             return result
 
-    def retrieve_monthly_req(self, connection):
+    def retrieve_monthly_req(self):
         curr_month = datetime.date.today().month
         curr_year = datetime.date.today().year
         #determine if a pull has been made this month or not
@@ -113,13 +116,13 @@ class WeatherData(DataSource):
             logging.info(f'{self.table_name} first pull of the month, monthly request limit reset, may want to verify manually')
             return 1000000   
         else:
-            query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
-            tbls = connection.execute(sql.text(query))
+            query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
+            tbls = self.db_engine.query(query).result().to_dataframe()
             tbls = [tbl for tbl, in tbls]
             if self.table_name in tbls:
                 #query database to determine requests made month to date
-                query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE MONTH(Date) = {curr_month}'''
-                result = connection.execute(sql.text(query))
+                query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
+                result = self.db_engine.query(query).result().to_dataframe()
                 #subtract from monthly limit
                 result = [r for r, in result][0]
                 reqs = 1000000 - result - len(self.zipcodes)
@@ -128,50 +131,50 @@ class WeatherData(DataSource):
             else:
                 return 1000000
 
-    def retrieve_zips(self, st, connection):
+    def retrieve_zips(self, st):
         #query database geo data, return list of zip codes based on self.states
         query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = '{st}' '''
-        result = connection.execute(sql.text(query))
+        result = self.db_engine.query(query).result().to_dataframe()
         result = [r for r, in result]
         return result
 
     def schedule(self, secrets):
         super().schedule(secrets)
         #determine last data ingestion
-        with self.db_engine.connect() as connection:
-            self.last_pull = self.retrieve_last_pull(connection)
-            if self.scheduled:#if already scheduled by override, return False for logic check in load method
-                if self.df.shape[0] > 0:#exit ramp for logic in load method
-                    return False
-                self.overwrite = self.yesterday
+        # with self.db_engine.connect() as connection:
+        self.last_pull = self.retrieve_last_pull()
+        if self.scheduled:#if already scheduled by override, return False for logic check in load method
+            if self.df.shape[0] > 0:#exit ramp for logic in load method
+                return False
+            self.overwrite = self.yesterday
+            self.zipcodes = []
+            for state in self.states:
+                self.zipcodes += self.retrieve_zips()
+            #determine if enough requests are available for another pull
+            self.requests = self.retrieve_monthly_req()
+            if self.requests > 0:
+                logging.info(f'''enough requests for {type(self).__name__}, continuing''')
+            else:
+                logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
+                self.scheduled = False #override manual schedule if not enough requests available
+        else:
+            #determine if it was run for yesterday's data
+            if self.last_pull < self.yesterday:
+                #grab list of zipcodes to pass to api calls
                 self.zipcodes = []
                 for state in self.states:
-                    self.zipcodes += self.retrieve_zips(state, connection)
+                    self.zipcodes += self.retrieve_zips(state)
                 #determine if enough requests are available for another pull
-                self.requests = self.retrieve_monthly_req(connection)
+                self.requests = self.retrieve_monthly_req()
                 if self.requests > 0:
-                    logging.info(f'''enough requests for {type(self).__name__}, continuing''')
+                    logging.info(f'''{type(self).__name__} scheduled''')
+                    return True
                 else:
                     logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
-                    self.scheduled = False #override manual schedule if not enough requests available
-            else:
-                #determine if it was run for yesterday's data
-                if self.last_pull < self.yesterday:
-                    #grab list of zipcodes to pass to api calls
-                    self.zipcodes = []
-                    for state in self.states:
-                        self.zipcodes += self.retrieve_zips(state, connection)
-                    #determine if enough requests are available for another pull
-                    self.requests = self.retrieve_monthly_req(connection)
-                    if self.requests > 0:
-                        logging.info(f'''{type(self).__name__} scheduled''')
-                        return True
-                    else:
-                        logging.warning(f'''Not enough {type(self).__name__} requests available for month, new data will not be pulled.''')
-                        return False
-                else:
-                    logging.info(f'''{type(self).__name__} not scheduled, data already up to date''')
                     return False
+            else:
+                logging.info(f'''{type(self).__name__} not scheduled, data already up to date''')
+                return False
 
     def extract(self):
         logging.info(f"""Requesting API for {len(self.zipcodes)} zip codes\n""")
@@ -265,12 +268,12 @@ class GeoData(DataSource):
         super().schedule(secrets)
         
         with self.db_engine.connect() as connection:
-            query = """SELECT table_name FROM information_schema.tables WHERE table_schema = 'projects'"""
-            tbls = connection.execute(sql.text(query))
+            query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
+            tbls = self.db_engine.query(query).result().to_dataframe()
             tbls = [tbl for tbl, in tbls]
             if self.table_name in tbls:
                 query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
-                result = connection.execute(sql.text(query))
+                result = self.db_engine.query(query).result().to_dataframe()
                 result = [r for r, in result][0]
                 if result.year < datetime.date.today().year:#schedule to run every new year
                     logging.info(f'''{type(self).__name__} scheduled''')
@@ -279,7 +282,7 @@ class GeoData(DataSource):
                     logging.info(f'''{type(self).__name__} not scheduled''')
                     return False
             else:
-                print(f'''{self.table_name} not found in information_schema.tables, scheduling pull''')
+                print(f'''{self.table_name} not found in dataset tables, scheduling pull''')
                 return True #schedule pull if table doesn't exist in database
 
     def extract(self):
@@ -325,9 +328,12 @@ class GeoData(DataSource):
 
     def load(self):
         #open connection
-        with self.db_engine.connect() as connection:
+        # with self.db_engine.connect() as connection:
             #replace table
-            self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
+        # self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
+        loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
+        loadjob.write_disposition = 'WRITE_TRUNCATE'
+        self.db_engine.load_table_from_dataframe(self.df,self.table_name,loadjob).result()
         logging.info(f'''Replaced table, {self.table_name} now up to date''')
 
 

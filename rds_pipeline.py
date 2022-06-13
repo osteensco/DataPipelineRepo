@@ -1,5 +1,6 @@
 import datetime
 import logging
+import pandas as pd
 from google.cloud import bigquery
 from sqlalchemy import types
 import boto3
@@ -44,8 +45,8 @@ class Pipeline:
                             'BOOLEAN': bigquery.enums.SqlTypeNames.Boolean
                             }
         self.init_log()
-        #add method so that logs land in a table in rds database as well
-        self.secrets = self.retrieve_secrets()
+        #add method so that logs land in a table in database as well
+        # self.secrets = self.retrieve_secrets()
         self.run()
 
     def init_log(self):
@@ -150,10 +151,5 @@ def run_pipeline():
 
 if __name__ == '__main__':
 
-    # run_pipeline()
+    run_pipeline()
 
-    #GBQ test
-    client = bigquery.Client('portfolio-project-353016')
-    q = '''SELECT * FROM `portfolio-project-353016.ALL.test_table`'''
-    df = client.query(q).result().to_dataframe()
-    print(df)
