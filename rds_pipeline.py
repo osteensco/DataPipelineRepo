@@ -1,21 +1,14 @@
 import datetime
 import logging
-import pandas as pd
 from google.cloud import bigquery
-from sqlalchemy import types
-import boto3
-import base64
-from botocore.exceptions import ClientError
-import json
 from datasources import GeoData, WeatherData
-import sys
+
 
 
 #Notes:
-    #https://docs.sqlalchemy.org/en/14/core/connections.html
     
     #next steps:
-        #finish lambda deployment
+
         #testing and adding try/excepts
         #create git branching for continuous development
         #look at github actions for deployment automation
@@ -39,14 +32,13 @@ class Pipeline:
         self.override_scheduling = forcedupdatesources
         self.dtype_convert = {
                             'FLOAT': bigquery.enums.SqlTypeNames.FLOAT,
-                            'STRING': bigquery.enums.SqlTypeNames.String,
+                            'STRING': bigquery.enums.SqlTypeNames.STRING,
                             'INT': bigquery.enums.SqlTypeNames.INTEGER,
                             'DATE': bigquery.enums.SqlTypeNames.DATE,
-                            'BOOLEAN': bigquery.enums.SqlTypeNames.Boolean
+                            'BOOLEAN': bigquery.enums.SqlTypeNames.BOOLEAN
                             }
         self.init_log()
         #add method so that logs land in a table in database as well
-        # self.secrets = self.retrieve_secrets()
         self.run()
 
     def init_log(self):
@@ -55,54 +47,16 @@ class Pipeline:
         else:    
             logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
-    def retrieve_secrets(self):#attain secrets from aws secret manager
-        secret_name = "pipeline"
-        # Create a Secrets Manager client
-        session = boto3.session.Session()
-        client = session.client(service_name='secretsmanager')
-        # error info see https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-        try:
-            get_secret_value_response = client.get_secret_value(
-                SecretId=secret_name
-            )
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'DecryptionFailureException':
-                # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
-                raise e
-            elif e.response['Error']['Code'] == 'InternalServiceErrorException':
-                # An error occurred on the server side.
-                raise e
-            elif e.response['Error']['Code'] == 'InvalidParameterException':
-                # You provided an invalid value for a parameter.
-                raise e
-            elif e.response['Error']['Code'] == 'InvalidRequestException':
-                # You provided a parameter value that is not valid for the current state of the resource.
-                raise e
-            elif e.response['Error']['Code'] == 'ResourceNotFoundException':
-                # We can't find the resource that you asked for.
-                raise e
-
-        # Decrypts secret using the associated KMS key.
-        # Depending on whether the secret is a string or binary, one of these fields will be populated.
-        if 'SecretString' in get_secret_value_response:
-            secret = get_secret_value_response['SecretString']
-        else:
-            secret = base64.b64decode(get_secret_value_response['SecretBinary'])
-        secret = json.loads(secret)#convert to dictionary
-
-        #assign secrets to appropriate attributes
+    def retrieve_secrets(self):#attain API Keys
         allobjs = self.data_objs + self.override_scheduling
         for obj in allobjs:
-            #if statements to assign api keys to appropriate data objects
-            if obj.table_name == 'Daily_Weather':
-                obj.APIkey = secret['weatherapi']
+            #Assign APIkey if one is needed
+            if obj.APIkey:
+                query = f"""SELECT API_KEY FROM `portfolio-project-353016.APIKEYS.KEYS` WHERE TBL_NM = '{obj.table_name}' """
+                obj.APIkey = obj.db_engine.query(query).result().to_dataframe()
+            else:
+                continue
 
-        self.hostname = secret['dbhost']
-        self.dbname = secret['dbname']
-        self.uname = secret['dbuser']
-        self.pwd = secret['dbpass']
-
-        return [self.hostname, self.dbname, self.uname, self.pwd]
 
     def manual_schedule(self):#identify data sources that should bypass schedule method
         if self.override_scheduling:
@@ -113,20 +67,19 @@ class Pipeline:
         else:
             pass
 
-    def schedule(self):
-        #open connection to db, query db to determine if data source is scheduled to be ingested
-        #also passes secrets to object for db connection
+    def schedule(self):#schedule pulls from DataSource objects
         for data in self.data_objs:
             if data not in self.override_scheduling:
-                data.scheduled = data.schedule(self.secrets)
+                data.scheduled = data.schedule()
             else:
-                #if overriding scheduling, we don't assign result
+                #if overriding scheduling, don't assign result
                 #method still needs to be called to query data needed for pull
-                data.schedule(self.secrets)
+                data.schedule()
 
     def run(self):
         self.manual_schedule()
         self.schedule()
+        self.retrieve_secrets()
         for data in self.data_objs:
             if data.scheduled:
                 data.extract()

@@ -4,7 +4,6 @@ import requests
 import time
 import bs4 as bs
 from google.cloud import bigquery
-from sqlalchemy import create_engine, types, sql
 import logging
 import sys
 
@@ -20,21 +19,19 @@ class DataSource:
         self.dtypes = {}
         self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
         self.overwrite = None #date passed to Delete query for manually scheduled data pulls, avoids duplicate entries
+        self.APIkey = False
 
-    def schedule(self, secrets):
-        self.secrets = secrets
+    def schedule(self):
         # used for determine if data should be ingested
         # Returns True/False
-        # Create SQLAlchemy engine for connection to MySQL Database
         self.db_engine = bigquery.Client('portfolio-project-353016')
-        # self.db_engine = create_engine(f'''mysql+pymysql://{self.secrets[2]}:{self.secrets[3]}@{self.secrets[0]}/{self.secrets[1]}''')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
         pass
 
     def load(self, dtypes):
-        if not self.schedule(self.secrets):#if manually scheduled
+        if not self.schedule():#if manually scheduled
             # with self.db_engine.connect() as connection:
             delete_tbl = f'''DELETE FROM {self.table_name} WHERE Date = '{self.overwrite}' '''
                 # connection.execute(sql.text(query))
@@ -88,48 +85,42 @@ class WeatherData(DataSource):
         self.table_name = 'Daily_Weather'
         self.dtypes = {i: bigquery.enums.SqlTypeNames.FLOAT for i in self.weather_data_col}
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
-        self.APIkey = None
+        self.APIkey = True
 
 
     def retrieve_last_pull(self):
         query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
         tbls = self.db_engine.query(query).result().to_dataframe()
-        print(tbls)
-        tbls = [tbl for tbl, in tbls]
+        tbls = tbls['table_id'].tolist()
         if self.table_name in tbls:
             query = f'''SELECT MAX(Date) FROM {self.table_name}'''
             result = self.db_engine.query(query).result().to_dataframe()
-            print(result)
             result = datetime.date.fromisoformat([r for r, in result][0]) 
             return result
         else:
-            result = self.yesterday - datetime.timedelta(days=1)
-            return result
+            return None
 
     def retrieve_monthly_req(self):
         curr_month = datetime.date.today().month
         curr_year = datetime.date.today().year
         #determine if a pull has been made this month or not
-        if (self.last_pull.month < curr_month
-        or self.last_pull.year < curr_year):    
-        #if last pull is not this month or this year (account for year change):
-            logging.info(f'{self.table_name} first pull of the month, monthly request limit reset, may want to verify manually')
-            return 1000000   
-        else:
-            query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
-            tbls = self.db_engine.query(query).result().to_dataframe()
-            tbls = [tbl for tbl, in tbls]
-            if self.table_name in tbls:
+        if self.last_pull:
+            if (self.last_pull.month < curr_month
+            or self.last_pull.year < curr_year):    
+            #if last pull is not this month or this year (account for year change):
+                logging.info(f'{self.table_name} first pull of the month, monthly request limit reset, may want to verify manually')
+                return 1000000   
+            else:
                 #query database to determine requests made month to date
-                query = f'''SELECT COUNT(*) FROM {self.table_name} WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
+                query = f'''SELECT COUNT(*) FROM `portfolio-project-353016.ALL.{self.table_name}` WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
                 result = self.db_engine.query(query).result().to_dataframe()
                 #subtract from monthly limit
                 result = [r for r, in result][0]
                 reqs = 1000000 - result - len(self.zipcodes)
                 #return number of requests available
                 return reqs
-            else:
-                return 1000000
+        else:
+            return 1000000
 
     def retrieve_zips(self, st):
         #query database geo data, return list of zip codes based on self.states
@@ -138,8 +129,8 @@ class WeatherData(DataSource):
         result = [r for r, in result]
         return result
 
-    def schedule(self, secrets):
-        super().schedule(secrets)
+    def schedule(self):
+        super().schedule()
         #determine last data ingestion
         # with self.db_engine.connect() as connection:
         self.last_pull = self.retrieve_last_pull()
@@ -264,26 +255,25 @@ class GeoData(DataSource):
             'VA', 'VT', 'WA', 'WI', 'WV', 'WY'
         ]
 
-    def schedule(self, secrets):
-        super().schedule(secrets)
+    def schedule(self):
+        super().schedule()
         
-        with self.db_engine.connect() as connection:
-            query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
-            tbls = self.db_engine.query(query).result().to_dataframe()
-            tbls = [tbl for tbl, in tbls]
-            if self.table_name in tbls:
-                query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
-                result = self.db_engine.query(query).result().to_dataframe()
-                result = [r for r, in result][0]
-                if result.year < datetime.date.today().year:#schedule to run every new year
-                    logging.info(f'''{type(self).__name__} scheduled''')
-                    return True
-                else:
-                    logging.info(f'''{type(self).__name__} not scheduled''')
-                    return False
+        query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
+        tbls = self.db_engine.query(query).result().to_dataframe()
+        tbls = tbls['table_id'].tolist()
+        if self.table_name in tbls:
+            query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
+            result = self.db_engine.query(query).result().to_dataframe()
+            result = [r for r, in result][0]
+            if result.year < datetime.date.today().year:#schedule to run every new year
+                logging.info(f'''{type(self).__name__} scheduled''')
+                return True
             else:
-                print(f'''{self.table_name} not found in dataset tables, scheduling pull''')
-                return True #schedule pull if table doesn't exist in database
+                logging.info(f'''{type(self).__name__} not scheduled''')
+                return False
+        else:
+            print(f'''{self.table_name} not found in dataset tables, scheduling pull''')
+            return True #schedule pull if table doesn't exist in database
 
     def extract(self):
         for state in self.States:
