@@ -4,6 +4,7 @@ import requests
 import time
 import bs4 as bs
 from google.cloud import bigquery
+from google.api_core import exceptions as gbq
 import logging
 import sys
 
@@ -124,7 +125,7 @@ class WeatherData(DataSource):
 
     def retrieve_zips(self, st):
         #query database geo data, return list of zip codes based on self.states
-        query = f'''SELECT ZIP_Code FROM US_Zips_Counties WHERE State = '{st}' '''
+        query = f'''SELECT ZIP_Code FROM `portfolio-project-353016.ALL.US_Zips_Counties` WHERE State = '{st}' '''
         result = self.db_engine.query(query).result().to_dataframe()
         result = [r for r, in result]
         return result
@@ -150,11 +151,15 @@ class WeatherData(DataSource):
                 self.scheduled = False #override manual schedule if not enough requests available
         else:
             #determine if it was run for yesterday's data
-            if self.last_pull < self.yesterday:
+            if not self.last_pull or self.last_pull < self.yesterday:
                 #grab list of zipcodes to pass to api calls
                 self.zipcodes = []
                 for state in self.states:
-                    self.zipcodes += self.retrieve_zips(state)
+                    try:
+                        self.zipcodes += self.retrieve_zips(state)
+                    except gbq.NotFound:
+                        logging.info(f'''{type(self).__name__} not scheduled, US_Zips_Counties table missing''')
+                        return False
                 #determine if enough requests are available for another pull
                 self.requests = self.retrieve_monthly_req()
                 if self.requests > 0:
@@ -235,7 +240,7 @@ class WeatherData(DataSource):
 class GeoData(DataSource):
     def __init__(self) -> None:
         super().__init__()
-        self.source = '''https://www.unitedstateszipcodes.org/'''
+        self.source = '''https://www.unitedstateszipcodes.org'''
         self.format = 'webscraped html to json'
         self.table_name = 'US_Zips_Counties'
         self.dtypes = {
@@ -282,7 +287,7 @@ class GeoData(DataSource):
             try:
                 r.raise_for_status()
             except Exception as ex:
-                logging.error(getattr(ex, 'message', repr(x)))
+                logging.error(getattr(ex, 'message', repr(ex)))
                 continue
             soup = bs.BeautifulSoup(r.text, 'html.parser')
             zips = []
