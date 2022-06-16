@@ -30,13 +30,6 @@ class Pipeline:
         self.timestamp = datetime.datetime.now()
         self.data_objs = sources
         self.override_scheduling = forcedupdatesources
-        self.dtype_convert = {
-                            'FLOAT': bigquery.enums.SqlTypeNames.FLOAT,
-                            'STRING': bigquery.enums.SqlTypeNames.STRING,
-                            'INT': bigquery.enums.SqlTypeNames.INTEGER,
-                            'DATE': bigquery.enums.SqlTypeNames.DATE,
-                            'BOOLEAN': bigquery.enums.SqlTypeNames.BOOLEAN
-                            }
         self.init_log()
         #add method so that logs land in a table in database as well
         self.run()
@@ -53,7 +46,7 @@ class Pipeline:
             #Assign APIkey if one is needed
             if obj.APIkey:
                 query = f"""SELECT API_KEY FROM `portfolio-project-353016.APIKEYS.KEYS` WHERE TBL_NM = '{obj.table_name}' """
-                obj.APIkey = obj.db_engine.query(query).result().to_dataframe()
+                obj.APIkey = obj.db_engine.query(query).result().to_dataframe()['API_KEY'].tolist()[0]
             else:
                 continue
 
@@ -83,7 +76,7 @@ class Pipeline:
         for data in self.data_objs:
             if data.scheduled:
                 data.extract()
-                data.load(self.dtype_convert)
+                data.load()
 
 
 

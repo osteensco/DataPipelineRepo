@@ -21,6 +21,7 @@ class DataSource:
         self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
         self.overwrite = None #date passed to Delete query for manually scheduled data pulls, avoids duplicate entries
         self.APIkey = False
+        self.dataset = '''portfolio-project-353016.ALL.'''
 
     def schedule(self):
         # used for determine if data should be ingested
@@ -31,46 +32,16 @@ class DataSource:
     def extract(self):
         pass
 
-    def load(self, dtypes):
+    def load(self):
         if not self.schedule():#if manually scheduled
-            # with self.db_engine.connect() as connection:
-            delete_tbl = f'''DELETE FROM {self.table_name} WHERE Date = '{self.overwrite}' '''
-                # connection.execute(sql.text(query))
+            delete_tbl = f'''DELETE FROM `{self.dataset}{self.table_name}` WHERE Date = '{self.overwrite}' '''
             self.db_engine.query(delete_tbl)
             logging.info(f'Removed any duplicate data from {self.table_name}, table cleaned for landing new pull')
-        #open connection
-        # with self.db_engine.connect() as connection:
-            #check if columns in df match up to columns in landing table
-        colcheck = f'''SELECT COLUMN_NAME \
-                    FROM `portfolio-project-353016.ALL.INFORMATION_SCHEMA.COLUMNS` \
-                    WHERE TABLE_NAME = '{self.table_name}'
-                    '''
-        # dbcols = connection.execute(sql.text(colcheck))
-        dbcols = self.db_engine.query(colcheck).result().to_dataframe()
-        dbcols = [c for c, in dbcols]                        
-        for col in self.df.columns:
-            if col in dbcols:
-                continue
-            else:
-                dtype = None
-                for key, value in dtypes.items():#sql alchemy type to sql syntax conversion
-                    if value == self.dtypes[col]:
-                        dtype = key
-                        break
-                if dtype:
-                    addcol = f'''ALTER TABLE {self.table_name} \
-                        ADD COLUMN {col} {dtype}
-                    '''
-                    # connection.execute(sql.text(addcol))
-                    self.db_engine.query(addcol)
-                else:
-                    logging.CRITICAL(f'''Type {self.dtypes[col]} not found in Pipeline SQL Syntax conversion dictionary, data pull for {self.table_name} failed''')
-                    return None
         #land in appropriate tables
-        # self.df.to_sql(self.table_name, connection, if_exists='append', index=False, dtype=self.dtypes)
         loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
         loadjob.write_disposition = 'WRITE_APPEND'
-        self.db_engine.load_table_from_dataframe(self.df, self.table_name, loadjob).result()
+        loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+        self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
 
@@ -84,7 +55,7 @@ class WeatherData(DataSource):
         self.states = states #list of state abbreviation strings, all caps
         self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
-        self.dtypes = {i: bigquery.enums.SqlTypeNames.FLOAT for i in self.weather_data_col}
+        self.dtypes = [bigquery.SchemaField(i, 'FLOAT') for i in self.weather_data_col]
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
         self.APIkey = True
 
@@ -94,9 +65,9 @@ class WeatherData(DataSource):
         tbls = self.db_engine.query(query).result().to_dataframe()
         tbls = tbls['table_id'].tolist()
         if self.table_name in tbls:
-            query = f'''SELECT MAX(Date) FROM {self.table_name}'''
+            query = f'''SELECT MAX(Date) AS dt FROM `{self.dataset}{self.table_name}` '''
             result = self.db_engine.query(query).result().to_dataframe()
-            result = datetime.date.fromisoformat([r for r, in result][0]) 
+            result = datetime.date.fromisoformat(result['dt'].tolist()[0]) 
             return result
         else:
             return None
@@ -113,10 +84,10 @@ class WeatherData(DataSource):
                 return 1000000   
             else:
                 #query database to determine requests made month to date
-                query = f'''SELECT COUNT(*) FROM `portfolio-project-353016.ALL.{self.table_name}` WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
+                query = f'''SELECT COUNT(*) AS cnt FROM `{self.dataset}{self.table_name}` WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
                 result = self.db_engine.query(query).result().to_dataframe()
                 #subtract from monthly limit
-                result = [r for r, in result][0]
+                result = result['cnt'].tolist()
                 reqs = 1000000 - result - len(self.zipcodes)
                 #return number of requests available
                 return reqs
@@ -127,7 +98,7 @@ class WeatherData(DataSource):
         #query database geo data, return list of zip codes based on self.states
         query = f'''SELECT ZIP_Code FROM `portfolio-project-353016.ALL.US_Zips_Counties` WHERE State = '{st}' '''
         result = self.db_engine.query(query).result().to_dataframe()
-        result = [r for r, in result]
+        result = result['ZIP_Code'].tolist()
         return result
 
     def schedule(self):
@@ -243,11 +214,11 @@ class GeoData(DataSource):
         self.source = '''https://www.unitedstateszipcodes.org'''
         self.format = 'webscraped html to json'
         self.table_name = 'US_Zips_Counties'
-        self.dtypes = {
-            'ZIP_Code': bigquery.enums.SqlTypeNames.STRING,
-            'County': bigquery.enums.SqlTypeNames.STRING,
-            'State': bigquery.enums.SqlTypeNames.STRING
-            }
+        self.dtypes = [
+            bigquery.SchemaField('ZIP_Code', 'STRING'),
+            bigquery.SchemaField('County', 'STRING'),
+            bigquery.SchemaField('State', 'STRING')
+        ]
         self.df = pd.DataFrame(columns=['ZIP_Code', 'County', 'State'], dtype=str)
         self.States = [
             'AL', 'AR', 'AZ', 'CA', 'CO', 'CT',
@@ -267,9 +238,9 @@ class GeoData(DataSource):
         tbls = self.db_engine.query(query).result().to_dataframe()
         tbls = tbls['table_id'].tolist()
         if self.table_name in tbls:
-            query = f'''SELECT MAX(Date_Pulled) FROM {self.table_name}'''
+            query = f'''SELECT MAX(Date_Pulled) AS dt FROM `{self.dataset}{self.table_name}` '''
             result = self.db_engine.query(query).result().to_dataframe()
-            result = [r for r, in result][0]
+            result = result['dt'].tolist()[0]
             if result.year < datetime.date.today().year:#schedule to run every new year
                 logging.info(f'''{type(self).__name__} scheduled''')
                 return True
@@ -322,13 +293,9 @@ class GeoData(DataSource):
                 logging.info(f'''{state} Zips and Counties scraped successfully!''')
 
     def load(self):
-        #open connection
-        # with self.db_engine.connect() as connection:
-            #replace table
-        # self.df.to_sql(self.table_name, connection, if_exists='replace', index=False, dtype=self.dtypes)
         loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
         loadjob.write_disposition = 'WRITE_TRUNCATE'
-        self.db_engine.load_table_from_dataframe(self.df,self.table_name,loadjob).result()
+        self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
         logging.info(f'''Replaced table, {self.table_name} now up to date''')
 
 
