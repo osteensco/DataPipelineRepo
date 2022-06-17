@@ -55,7 +55,10 @@ class WeatherData(DataSource):
         self.states = states #list of state abbreviation strings, all caps
         self.weather_data_col = ['totalprecip_in']#columns from weather data we want to use
         self.table_name = 'Daily_Weather'
-        self.dtypes = [bigquery.SchemaField(i, 'FLOAT') for i in self.weather_data_col]
+        self.dtypes = [
+                        bigquery.SchemaField('ZIP_Code', 'STRING'),
+                        bigquery.SchemaField('Date', 'DATE')        
+                    ] + [bigquery.SchemaField(i, 'FLOAT') for i in self.weather_data_col]
         self.yesterday = datetime.date.today() - datetime.timedelta(days=1)#get yesterdays date (yyyy-mm-dd)
         self.APIkey = True
 
@@ -67,7 +70,7 @@ class WeatherData(DataSource):
         if self.table_name in tbls:
             query = f'''SELECT MAX(Date) AS dt FROM `{self.dataset}{self.table_name}` '''
             result = self.db_engine.query(query).result().to_dataframe()
-            result = datetime.date.fromisoformat(result['dt'].tolist()[0]) 
+            result = result['dt'].tolist()[0]
             return result
         else:
             return None
@@ -87,7 +90,7 @@ class WeatherData(DataSource):
                 query = f'''SELECT COUNT(*) AS cnt FROM `{self.dataset}{self.table_name}` WHERE EXTRACT(MONTH FROM Date) = {curr_month}'''
                 result = self.db_engine.query(query).result().to_dataframe()
                 #subtract from monthly limit
-                result = result['cnt'].tolist()
+                result = result['cnt'].tolist()[0]
                 reqs = 1000000 - result - len(self.zipcodes)
                 #return number of requests available
                 return reqs
@@ -199,9 +202,10 @@ class WeatherData(DataSource):
         json_1["Date"] = self.yesterday
         keep_col = ["ZIP_Code", "Date"] + self.weather_data_col#determine cols to keep
         cleaned_json_result = {k: [json_1[k]] for k in json_1 if k in keep_col}#remove unwanted fields
-        #place in df and append
-        result_df = pd.DataFrame(cleaned_json_result).astype('str')
-        result_df[self.weather_data_col] = result_df[self.weather_data_col].astype('float')
+        #place in df, set datatypes, and append
+        result_df = pd.DataFrame(cleaned_json_result)
+        dtypes = {"ZIP_Code": 'str', "Date": 'datetime64'} | {i: 'float' for i in self.weather_data_col}
+        result_df = result_df.astype(dtypes)
         return pd.concat([self.df, result_df])
 
 

@@ -82,7 +82,7 @@ class Pipeline:
 
 
 
-def run_pipeline():
+def run_pipeline(*args):
     data = [
         GeoData(),
         WeatherData(['GA'])
