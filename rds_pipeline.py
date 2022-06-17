@@ -1,6 +1,5 @@
 import datetime
 import logging
-from google.cloud import bigquery
 from datasources import GeoData, WeatherData
 
 
