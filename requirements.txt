@@ -1,0 +1,6 @@
+beautifulsoup4==4.11.1
+google-cloud-bigquery==3.2.0
+google-api-core==2.8.1
+pandas==1.4.2
+requests==2.27.1
+db-dtypes==1.0.2

@@ -1,0 +1,9 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+  - 'functions'
+  - deploy
+  - run
+  - --source=.
+  - --trigger-topic dailyscheduled
+  - --runtime=python39
