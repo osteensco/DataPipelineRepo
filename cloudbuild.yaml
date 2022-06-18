@@ -5,5 +5,5 @@ steps:
   - deploy
   - run
   - --source=.
-  - --trigger-topic 'dailyscheduled'
+  - --trigger-topic=dailyscheduled
   - --runtime=python39
