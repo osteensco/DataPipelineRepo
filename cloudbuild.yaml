@@ -7,3 +7,5 @@ steps:
   - --source=.
   - --trigger-topic=dailyscheduled
   - --runtime=python39
+  - --memory=1024MB
+  - --timeout=540s
