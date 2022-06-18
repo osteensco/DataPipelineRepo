@@ -4,24 +4,6 @@ from datasources import GeoData, WeatherData
 
 
 
-#Notes:
-    
-    #next steps:
-
-        #testing and adding try/excepts
-        #create git branching for continuous development
-        #look at github actions for deployment automation
-
-
-#gcloud auth application-default login
-
-
-
-
-
-
-
-
 
 
 class Pipeline:
