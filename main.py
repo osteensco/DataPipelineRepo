@@ -32,7 +32,7 @@ def uslocations_pipeline(event, context):
 
 def websitehits_pipeline(event, context):
     data = [
-    WebsiteEndpoint(event.data)
+    WebsiteEndpoint(event.message.data)
     ]
 
     manual = [
