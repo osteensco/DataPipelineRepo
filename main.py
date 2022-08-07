@@ -1,6 +1,6 @@
 from rds_pipeline import run_pipeline
 from datasources import GeoData, WeatherData, WebsiteEndpoint
-
+import base64
 
 
 
@@ -32,7 +32,7 @@ def uslocations_pipeline(event, context):
 
 def websitehits_pipeline(event, context):
     data = [
-    WebsiteEndpoint(event.message.data)
+    WebsiteEndpoint(base64.b64decode(event['data']).decode('utf-8'))
     ]
 
     manual = [
