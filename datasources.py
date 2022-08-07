@@ -17,7 +17,7 @@ class DataSource:
         self.df = pd.DataFrame()
         self.db_engine = None
         self.table_name = None
-        self.dtypes = {}
+        self.dtypes = []
         self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
         self.overwrite = None #date passed to Delete query for manually scheduled data pulls, avoids duplicate entries
         self.APIkey = False
@@ -43,6 +43,8 @@ class DataSource:
         loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
         self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
+
+
 
 
 
@@ -191,8 +193,6 @@ class WeatherData(DataSource):
                                                     \r'''
             ))
 
-            
-
     def clean_and_append(self, json_dict, zip):#specific for weather data
         #dictionary address for weather data
         #other available fields in "astro" and "hour" (replaces "day")
@@ -207,6 +207,7 @@ class WeatherData(DataSource):
         dtypes = {"ZIP_Code": 'str', "Date": 'datetime64'} | {i: 'float' for i in self.weather_data_col}
         result_df = result_df.astype(dtypes)
         return pd.concat([self.df, result_df])
+
 
 
 
@@ -303,6 +304,41 @@ class GeoData(DataSource):
         logging.info(f'''Replaced table, {self.table_name} now up to date''')
 
 
+
+
+
+
+class WebsiteEndpoint(DataSource):
+    def __init__(self, payload) -> None:
+        super().__init__()
+        self.source = '''www.scottosteen.com'''
+        self.format = 'json'
+        self.table_name = 'Portfolio_Website_Traffic'
+        self.dtypes = [
+            bigquery.SchemaField('TimeStamp', 'TIMESTAMP'),
+            bigquery.SchemaField('ID', 'STRING'),
+            bigquery.SchemaField('Session', 'STRING'),
+            bigquery.SchemaField('Page', 'STRING'),
+            bigquery.SchemaField('Referrer', 'STRING'),
+            bigquery.SchemaField('Device', 'STRING'),
+            bigquery.SchemaField('Language', 'STRING')
+        ]
+        self.payload = payload
+
+    def schedule(self):
+        super().schedule()
+        return True
+
+    def extract(self):
+        self.df = pd.read_json(self.payload)
+
+    def load(self):
+        #land in appropriate tables
+        loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
+        loadjob.write_disposition = 'WRITE_APPEND'
+        loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+        self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
+        logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
 
 

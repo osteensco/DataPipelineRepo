@@ -1,6 +1,6 @@
 import datetime
 import logging
-from datasources import GeoData, WeatherData
+
 
 
 
@@ -63,20 +63,12 @@ class Pipeline:
 
 
 
-def run_pipeline(*args):
-    data = [
-        GeoData(),
-        WeatherData(['GA'])
-        ]
+def run_pipeline(data, manual):
 
-    manual = [
-        
-    ]
 
     Pipeline(sources=data, forcedupdatesources=manual)
     print('Complete')
 
 if __name__ == '__main__':
-
-    run_pipeline()
+    pass
 
