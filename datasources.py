@@ -330,7 +330,9 @@ class WebsiteEndpoint(DataSource):
         return True
 
     def extract(self):
+        print(self.payload)
         self.df = pd.read_json(self.payload)
+        
 
     def load(self):
         #land in appropriate tables

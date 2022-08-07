@@ -31,8 +31,10 @@ def uslocations_pipeline(event, context):
 
 
 def websitehits_pipeline(event, context):
+    payload = base64.b64decode(event['data']).decode('utf-8')
+
     data = [
-    WebsiteEndpoint(base64.b64decode(event['data']).decode('utf-8'))
+    WebsiteEndpoint(payload)
     ]
 
     manual = [
