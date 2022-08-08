@@ -1,4 +1,5 @@
 import datetime
+import json
 import pandas as pd
 import requests
 import time
@@ -323,14 +324,14 @@ class WebsiteEndpoint(DataSource):
             bigquery.SchemaField('Device', 'STRING'),
             bigquery.SchemaField('Language', 'STRING')
         ]
-        self.payload = payload
+        self.payload = json.loads(payload)
 
     def schedule(self):
         super().schedule()
         return True
 
     def extract(self):
-        print(self.payload)
+
         self.df = pd.read_json(self.payload)
         
 
