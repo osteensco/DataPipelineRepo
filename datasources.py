@@ -324,14 +324,15 @@ class WebsiteEndpoint(DataSource):
             bigquery.SchemaField('Device', 'STRING'),
             bigquery.SchemaField('Language', 'STRING')
         ]
-        self.payload = json.loads(payload)
+        self.payload = payload
+
 
     def schedule(self):
         super().schedule()
         return True
 
     def extract(self):
-
+        logging.info(f'''{type(self).__name__} Payload: \n{self.payload}''' )
         self.df = pd.read_json(self.payload)
         
 
