@@ -317,6 +317,7 @@ class WebsiteEndpoint(DataSource):
         self.table_name = 'Portfolio_Website_Traffic'
         self.dtypes = [
             bigquery.SchemaField('TimeStamp', 'TIMESTAMP'),
+            bigquery.SchemaField('PlainTextTS', 'STRING'),
             bigquery.SchemaField('ID', 'STRING'),
             bigquery.SchemaField('Session', 'STRING'),
             bigquery.SchemaField('Page', 'STRING'),
