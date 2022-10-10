@@ -520,18 +520,22 @@ class CFGames(DataSource):#Table containing meta game data Columns: year, oppone
 
 
 
-class CFGameTeamStats(DataSource):#Table containing data from game "team stats" page data, one row for each team, Columns: url(for game id), team, Home/Away col for each stat
-    def __init__(self, massgrab=False, overwrite=False) -> None:
+class CFGameTeamStats(DataSource):
+    '''
+    Note:\n
+    \t This object is dependant on data pulled from GFGames object.\n
+    \t If no data is in Power_5_Games table then no data will be pulled by this object.
+    '''
+    def __init__(self, overwrite=False) -> None:
         super().__init__()
-        self.source = 'https://www.espn.com/matchup?gameId='
-        self.massgrab = massgrab
+        self.source = 'https://www.espn.com/college-football/matchup?gameId='
         self.overwrite = overwrite
         self.format = 'webscraped html'
         self.table_name = 'Game_Team_Stats'
         self.dtypes = [
             bigquery.SchemaField('GameID', 'STRING'),
             bigquery.SchemaField('Team', 'STRING'),
-            bigquery.SchemaField('isHome', 'STRING'),
+            bigquery.SchemaField('isHome', 'BOOL'),
             bigquery.SchemaField('Points', 'STRING'),
             bigquery.SchemaField('FirstDowns', 'STRING'),
             bigquery.SchemaField('ThirdDownEff', 'STRING'),
@@ -571,80 +575,143 @@ class CFGameTeamStats(DataSource):#Table containing data from game "team stats" 
             return True
 
     def extract(self):
-
         allgamestats = []
-        query = f"""
-            With CurrStatsCTE AS (
+        if not self.overwrite:
+        #query will join stats table to game table to generate a list of game ids that we dont stat for one or both teams
+            query = f"""
+                With CurrStatsCTE AS (
+                    SELECT
+                        GameID,
+                        COUNT(DISTINCT Team) AS cntcheck
+                    FROM `{self.dataset}{self.table_name}`
+                    GROUP BY 1
+                    )
                 SELECT
-                    GameID,
-                    COUNT(DISTINCT Team) AS cntcheck
-                FROM `{self.dataset}{self.table_name}`
-                GROUP BY 1
-                )
-            SELECT
-                GameID
-            FROM (
+                    GameID
+                FROM (
+                    SELECT
+                        GameID,
+                        cntcheck
+                    FROM `{self.dataset}Power_5_Games`
+                    LEFT JOIN CurrStatsCTE
+                    USING(GameID)
+                    )
+                WHERE cntcheck < 2 
+                OR cntcheck IS NULL
+            """
+        else:
+            #if overwriting everything we just want to pull
+            query = f"""
                 SELECT
-                    GameID,
-                    cntcheck
+                    GameID
                 FROM `{self.dataset}Power_5_Games`
-                LEFT JOIN CurrStatsCTE
-                USING(GameID)
-                )
-            WHERE cntcheck < 2 
-            OR cntcheck IS NULL
-        """
+            """
         gms = self.db_engine.query(query).result().to_dataframe()
         gameids = [i for i in gms['GameID']]
 
         for id in gameids:
+            game = {
+                'home': {
+                    'GameID': id,
+                    'Team': '',
+                    'isHome': True,
+                    'Points': '', 
+                    '1st Downs': '',
+                    '3rd down efficiency': '',
+                    '4th down efficiency': '',
+                    'Total Yards': '',
+                    'Passing': '',
+                    'Comp-Att': '',
+                    'Interceptions thrown': '',
+                    'Rushing': '',
+                    'Rushing Attempts': '',
+                    'Penalties': '',
+                    'Fumbles lost': '',
+                    'Possession': ''
+                    }, 
+                'away': {
+                    'GameID': id,
+                    'Team': '',
+                    'isHome': False,
+                    'Points': '',
+                    '1st Downs': '',
+                    '3rd down efficiency': '',
+                    '4th down efficiency': '',
+                    'Total Yards': '',
+                    'Passing': '',
+                    'Comp-Att': '',
+                    'Interceptions thrown': '',
+                    'Rushing': '',
+                    'Rushing Attempts': '',
+                    'Penalties': '',
+                    'Fumbles lost': '',
+                    'Possession': ''
+                    }
+                }
+            teams = game.keys()       
             path = f'''{self.source}{id}'''
-            r = self.getreq(path)
-            soup = bs.BeautifulSoup(r.text, 'html.parser')
-            for s in soup.find_all('tr'):
-                game = {
-                        'GameID': '',
-                        'Team': '',
-                        'isHome': '',
-                        'Points': '', 
-                        'FirstDowns': '', 
-                        'ThirdDownEff': '', 
-                        'FourthDownEff': '', 
-                        'TotalYds': '',
-                        'PassYds': '', 
-                        'PassCompAtt': '', 
-                        'PassIntThrown': '', 
-                        'RushYds': '', 
-                        'RushAtt': '',
-                        'Penalties': '',
-                        'FumblesLost': '', 
-                        'PossTime': ''
-                        }
-                
-                #loop through <tr> tags to grab data
-                #middle aka left col is always away team, rightmost home team
-
-                
-            #after loop grab team names and scores from <div> class_="team away/hom --> <div> class_="team__content"
-
-
-            allgamestats.append(game)
+            r = self.getreq(path) 
+            #bail out if espn blocks us
+            try:
+                r.raise_for_status()
+            except:
+                break
+            bsobj = bs.BeautifulSoup(r.text, 'html.parser')
+            #grab all stats from table, score and team name not in table
+            try:
+            #sometimes espn is missing team stats for a game, page exists but table does not - we mark these as "unavail" so they are easily queried
+            #we want a record of the game, who played, and the score
+                soup = bsobj.find('section', id="main-container").find('div', id="gamepackage-matchup").find('tbody').find_all('tr')
+                for s in soup:    
+                    stat = s.find_all('td')
+                    st = stat[0].get_text().strip()#stat[0] is stat name
+                    if st in game['away'].keys():
+                        game['away'][st] = stat[1].get_text().translate({ord(char): None for char in ['\n', '\t']})#stat[1] is away teams stats
+                        game['home'][st] = stat[2].get_text().translate({ord(char): None for char in ['\n', '\t']})#stat[2] is home teams stats
+            except AttributeError:
+                for tm in teams:
+                    for k in [key for key in game[tm].keys() if key not in ['Teams', 'Points', 'GameID', 'isHome']]:
+                        game[tm][k] = 'unavail'
+            #grab team name, score, add completed dictionary to our list
+            for t in teams:
+                sp = bsobj.find('div', class_=f'team {t}')
+                game[t]['Team'] = f"""{sp.find('span', class_="long-name").get_text()} {sp.find('span', class_="short-name").get_text()}"""
+                game[t]['Points'] = sp.find('div', class_='score-container').find('div', class_=f"""score icon-font-{'after' if t=='away' else 'before'}""").get_text()
+                allgamestats.append(game[t])
+        #place everything in a dataframe
         self.df = self.df.from_records(allgamestats)
+        self.df = self.mapfields(self.df)
 
-
-
+    def mapfields(self, df):
+        fieldmap = {
+            '1st Downs': 'FirstDowns',
+            '3rd down efficiency': 'ThirdDownEff',
+            '4th down efficiency': 'FourthDownEff',
+            'Total Yards': 'TotalYds',
+            'Passing': 'PassYds',
+            'Comp-Att': 'PassCompAtt',
+            'Interceptions thrown': 'PassIntThrown',
+            'Rushing': 'RushYds',
+            'Rushing Attempts': 'RushAtt',
+            'Fumbles lost': 'FumblesLost',
+            'Possession': 'PossTime'
+        }
+        df=df.rename(index=str, columns=fieldmap)
+        return df
 
     def load(self):
-        loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
-        if self.overwrite:
-            self.truncate()
-            loadjob.write_disposition = 'WRITE_TRUNCATE'
+        if self.df.shape[0] > 0:
+            loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
+            if self.overwrite:
+                self.truncate()
+                loadjob.write_disposition = 'WRITE_TRUNCATE'
+            else:
+                loadjob.write_disposition = 'WRITE_APPEND'
+            loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+            self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
+            logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
         else:
-            loadjob.write_disposition = 'WRITE_APPEND'
-        loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
-        self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
-        logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
-
+            logging.info('''No new data to pull''')
 
 
 
@@ -668,7 +735,6 @@ class WebsiteEndpoint(DataSource):
         ]
         self.payload = payload
 
-
     def schedule(self):
         super().schedule()
         return True
@@ -687,11 +753,13 @@ class WebsiteEndpoint(DataSource):
 
 
 
+
+
+
+
+
 if __name__ == '__main__':
-    run = CFGames()
+#add any tests here
+    run = CFGameTeamStats()
     run.test()
-
-
-    
-    pass
-    #add any tests here
+    run.load()
