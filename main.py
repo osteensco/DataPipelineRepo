@@ -1,5 +1,5 @@
 from rds_pipeline import run_pipeline
-from datasources import GeoData, WeatherData, WebsiteEndpoint
+from datasources import GeoData, WeatherData, WebsiteEndpoint, CFTeamsAll, CFGames, CFGameTeamStats
 import base64
 
 
@@ -45,4 +45,13 @@ def websitehits_pipeline(event, context):
 
 
 
+def cf_pwr5teams_pipeline(event, context):
+    data = [
+    CFTeamsAll()
+    ]
 
+    manual = [
+
+    ]
+
+    run_pipeline(data, manual)
