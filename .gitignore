@@ -3,3 +3,4 @@
 /lambda_deployment
 cloud9_lambda_layer.txt
 /bqAutoAuth.py
+/cloudbuilds/template.yaml

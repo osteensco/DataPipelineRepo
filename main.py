@@ -55,3 +55,16 @@ def cf_pwr5teams_pipeline(event, context):
     ]
 
     run_pipeline(data, manual)
+
+
+
+def cf_games_pipeline(event, context):
+    data = [
+    CFGames()
+    ]
+
+    manual = [
+
+    ]
+
+    run_pipeline(data, manual)
