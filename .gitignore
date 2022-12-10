@@ -2,3 +2,4 @@
 /__pycache__
 /lambda_deployment
 cloud9_lambda_layer.txt
+/bqAutoAuth.py

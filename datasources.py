@@ -53,7 +53,7 @@ class DataSource:
 
     def getreq(self, url):
         r = requests.get(url=url, 
-        headers={'''User-Agent''': '''Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'''})
+        headers={'User-Agent': '''Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36''','referer':'https://www.google.com/'})
         try:
             r.raise_for_status()
         except Exception as ex:
@@ -674,10 +674,16 @@ class CFGameTeamStats(DataSource):
                         game[tm][k] = 'unavail'
             #grab team name, score, add completed dictionary to our list
             for t in teams:
-                sp = bsobj.find('div', class_=f'team {t}')
-                game[t]['Team'] = f"""{sp.find('span', class_="long-name").get_text()} {sp.find('span', class_="short-name").get_text()}"""
-                game[t]['Points'] = sp.find('div', class_='score-container').find('div', class_=f"""score icon-font-{'after' if t=='away' else 'before'}""").get_text()
-                allgamestats.append(game[t])
+                try:
+                    sp = bsobj.find('div', class_=f'team {t}')
+                    game[t]['Team'] = f"""{sp.find('span', class_="long-name").get_text()} {sp.find('span', class_="short-name").get_text()}"""
+                    game[t]['Points'] = sp.find('div', class_='score-container').find('div', class_=f"""score icon-font-{'after' if t=='away' else 'before'}""").get_text()
+                    allgamestats.append(game[t])
+                except AttributeError as er:
+                    game[t]['Team'] = 'unavail'
+                    game[t]['Points'] = 'unavail'
+                    logging.error(f'''{getattr(er, 'message', repr(er))} \n path: {path}, t: {t}, game: {game}''')
+                    allgamestats.append(game[t])
         #place everything in a dataframe
         self.df = self.df.from_records(allgamestats)
         self.df = self.mapfields(self.df)
@@ -700,6 +706,7 @@ class CFGameTeamStats(DataSource):
         return df
 
     def load(self):
+        self.testitem = self.df.shape[0]
         if self.df.shape[0] > 0:
             loadjob = bigquery.LoadJobConfig(schema=self.dtypes)
             if self.overwrite:
