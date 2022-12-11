@@ -3,9 +3,9 @@ steps:
   args:
   - functions
   - deploy
-  - [function name here]
+  - cf_gamestats_pipeline
   - --source=.
-  - --trigger-topic=[pub/sub topic or endpoint here]
+  - --trigger-topic=dailyscheduled
   - --runtime=python39
   - --memory=1024MB
   - --timeout=540s
