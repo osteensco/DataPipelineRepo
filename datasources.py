@@ -654,9 +654,9 @@ class CFGameTeamStats(DataSource):
             #bail out if espn blocks us
             try:
                 r.raise_for_status()
+                bsobj = bs.BeautifulSoup(r.text, 'html.parser')
             except:
-                break
-            bsobj = bs.BeautifulSoup(r.text, 'html.parser')
+                pass#if page does not exist pass to next try/except blocks to autofill unavail data
             #grab all stats from table, score and team name not in table
             try:
             #sometimes espn is missing team stats for a game, page exists but table does not - we mark these as "unavail" so they are easily queried
@@ -668,9 +668,9 @@ class CFGameTeamStats(DataSource):
                     if st in game['away'].keys():
                         game['away'][st] = stat[1].get_text().translate({ord(char): None for char in ['\n', '\t']})#stat[1] is away teams stats
                         game['home'][st] = stat[2].get_text().translate({ord(char): None for char in ['\n', '\t']})#stat[2] is home teams stats
-            except AttributeError:
+            except (AttributeError, UnboundLocalError):
                 for tm in teams:
-                    for k in [key for key in game[tm].keys() if key not in ['Teams', 'Points', 'GameID', 'isHome']]:
+                    for k in [key for key in game[tm].keys() if key not in ['Team', 'Points', 'GameID', 'isHome']]:
                         game[tm][k] = 'unavail'
             #grab team name, score, add completed dictionary to our list
             for t in teams:
@@ -679,8 +679,8 @@ class CFGameTeamStats(DataSource):
                     game[t]['Team'] = f"""{sp.find('span', class_="long-name").get_text()} {sp.find('span', class_="short-name").get_text()}"""
                     game[t]['Points'] = sp.find('div', class_='score-container').find('div', class_=f"""score icon-font-{'after' if t=='away' else 'before'}""").get_text()
                     allgamestats.append(game[t])
-                except AttributeError as er:
-                    game[t]['Team'] = 'unavail'
+                except (AttributeError, UnboundLocalError) as er:
+                    game[t]['Team'] = t
                     game[t]['Points'] = 'unavail'
                     logging.error(f'''{getattr(er, 'message', repr(er))} \n path: {path}, t: {t}, game: {game}''')
                     allgamestats.append(game[t])
@@ -769,4 +769,4 @@ if __name__ == '__main__':
 #add any tests here
     run = CFGameTeamStats()
     run.test()
-    run.load()
+    # run.load()
