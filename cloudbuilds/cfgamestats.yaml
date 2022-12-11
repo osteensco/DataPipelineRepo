@@ -1,0 +1,11 @@
+steps:
+- name: 'gcr.io/cloud-builders/gcloud'
+  args:
+  - functions
+  - deploy
+  - cf_gamestats_pipeline
+  - --source=.
+  - --trigger-topic=dailyscheduled
+  - --runtime=python39
+  - --memory=1024MB
+  - --timeout=540s
