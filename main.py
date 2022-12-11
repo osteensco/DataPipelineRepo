@@ -74,7 +74,6 @@ def cf_games_pipeline(event, context):
 
     ]
 
-
     run_pipeline(data, manual)
 
 
@@ -87,6 +86,5 @@ def cf_gamestats_pipeline(event, context):
     manual = [
 
     ]
-
 
     run_pipeline(data, manual)
