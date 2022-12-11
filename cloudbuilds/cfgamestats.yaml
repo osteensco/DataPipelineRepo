@@ -1,0 +1,11 @@
+steps:
+- name: 'gcr.io/cloud-builders/gcloud'
+  args:
+  - functions
+  - deploy
+  - [function name here]
+  - --source=.
+  - --trigger-topic=[pub/sub topic or endpoint here]
+  - --runtime=python39
+  - --memory=1024MB
+  - --timeout=540s
