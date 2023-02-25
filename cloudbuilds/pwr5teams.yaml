@@ -4,7 +4,7 @@ steps:
   - functions
   - deploy
   - cf_pwr5teams_pipeline
-  - --source=.
+  - --source=./cf_pwr5teams_pipeline
   - --trigger-topic=dailyscheduled
   - --runtime=python39
   - --memory=1024MB
