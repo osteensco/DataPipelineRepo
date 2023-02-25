@@ -4,7 +4,7 @@ steps:
   - functions
   - deploy
   - websitehits_pipeline
-  - --source=.
+  - --source=./websitehits_pipeline
   - --trigger-topic=portfoliowebsite
   - --runtime=python39
   - --memory=1024MB

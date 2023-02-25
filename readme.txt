@@ -1,2 +1,0 @@
-After brainstorming project ideas, I realized that because most would be data related, I needed to develop pipelines to retrieve and organize data.
-I decided on dedicating a project to a data pipeline that would be used for handling all of my data gathering needs for other projects.
