@@ -4,7 +4,7 @@ steps:
   - functions
   - deploy
   - cf_games_pipeline
-  - --source=.
+  - --source=./functions
   - --trigger-topic=dailyscheduled
   - --runtime=python39
   - --memory=1024MB
