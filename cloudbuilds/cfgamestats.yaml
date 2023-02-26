@@ -4,7 +4,7 @@ steps:
   - functions
   - deploy
   - cf_gamestats_pipeline
-  - --source=./functions
+  - --source=.
   - --trigger-topic=dailyscheduled
   - --runtime=python39
   - --memory=1024MB
