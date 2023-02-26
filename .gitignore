@@ -1,6 +1,6 @@
 /env
 /__pycache__
-/lambda_deployment
-cloud9_lambda_layer.txt
+/functions/__pycache__
+/functions/util/__pycache__
 /bqAutoAuth.py
 /cloudbuilds/template.yaml
