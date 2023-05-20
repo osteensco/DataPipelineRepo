@@ -70,7 +70,31 @@ class DataSource:
         else:
             print('testitem/df failed to generate')
 
-        
+
+
+
+#TODO
+##refactor cf datasource objects
+####decouple dependencies into query objects and/or .sql files
+##use google workflows for orchestration https://cloud.google.com/workflows/docs/overview | https://cloud.google.com/workflows/docs/reference/syntax/conditions
+####ensure objects are written with utilizing google workflows in mind (are these triggered by http, eventrac, or pub/sub? some combination?)
+
+class Query():
+    def __init__(self, sql_string) -> None:
+        self.body = sql_string
+        self.db_engine = bigquery.Client('portfolio-project-353016')
+
+    def run(self):
+        self.db_engine.query(self.body).result()
+
+
+
+
+
+
+
+
+#data source objects        
 class WeatherData(DataSource):
     def __init__(self, states) -> None:
         super().__init__()
@@ -757,6 +781,8 @@ class WebsiteEndpoint(DataSource):
         loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
         self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
+
+
 
 
 

@@ -63,11 +63,36 @@ class Pipeline:
 
 
 
+class SQL(Pipeline):
+    def __init__(self, sources, forcedupdatesources=[]) -> None:
+        super().__init__(sources, forcedupdatesources)
+
+
+
+
+
+
+
 def run_pipeline(data, manual):
 
 
     Pipeline(sources=data, forcedupdatesources=manual)
     print('Complete')
+
+
+#TODO
+##refactor to better handle testing before pushing builds to production
+##differentiate ingestion, transfer, and transform (sql) pipelines? datasources instead?
+###cloud function triggered by http? other use cases in event driven architecture? (scheduled queries cover scheduled driven use cases)
+####add downstream variable to datasource to define any downstream requirements within architecture
+####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
+
+# def run_sql_pipeline(data, manual):
+
+
+#     SQL(sources=data, forcedupdatesources=manual)
+#     print('Complete')
+
 
 if __name__ == '__main__':
     pass
