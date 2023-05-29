@@ -54,7 +54,10 @@ class SwitchBoard():
     ####On completion of pipeline GCF, SwitchBoard will be triggered to communicate successful run.
         ###SwitchBoard will update .json file in cloud storage once successful pipeline run is communicated to it.
 
-
+    # need to setup SwitchBoard library
+        ## git+https://github.com/osteensco/[SwitchBoard].git
+        ## pip install -e
+            ## this will install the library in "editable mode" allowing changes to the library to be reflected automatically
 
 
 def call(event, context):
