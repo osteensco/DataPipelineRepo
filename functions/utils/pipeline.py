@@ -1,6 +1,6 @@
 import datetime
 import logging
-
+from datasources import DataSource, Query
 
 
 
@@ -77,44 +77,46 @@ class SQL(Pipeline):
 
 
 
+
+
+
+
+
+def map_type(data_objs:list, manual_objs:list, type:any):
+
+    def extract_type(objs:list, type:any):
+        return [o for o in objs if isinstance(type)]
+    
+    return {
+        'sources': extract_type(data_objs, type),
+        'forcedupdatesources': extract_type(manual_objs, type)
+    }
+
+
 def run_pipeline(data, manual):
+    
+    datasources = map_type(data, manual, DataSource)
 
+    queries = map_type(data, manual, Query)
 
-    Pipeline(sources=data, forcedupdatesources=manual)
+    Pipeline(sources=datasources['sources'], forcedupdatesources=datasources['forcedupdatesources'])
+    
+    SQL(sources=queries['sources'], forcedupdatesources=queries['forcedupdatesources'])
+    
     print('Complete')
+
+
+
+
+
+
+
 
 
 #TODO
 ##refactor to better handle testing before pushing builds to production
 ##use SwitchBoard framework for orchestration
     ####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
-
-
-
-##SwitchBoard framework:
-    ####PubSub triggers GCF endpoints.
-    ####Trigger endpoints will trigger SwitchBoard GCF via HTTP.
-    ####SwitchBoard contains graph data structure that will trigger appropriate pipelines via HTTP.
-        ###SwitchBoard will reference .json file in cloud storage for any additional dependencies that should be considered.
-        ###When a pipeline is triggered a 200 response is returned immediately to identify a successful trigger.
-        ###Any failures will exist in logs of pipeline GCF.
-    ####On completion of pipeline GCF, SwitchBoard will be triggered to communicate successful run.
-        ###SwitchBoard will update .json file in cloud storage once successful pipeline run is communicated to it.
-
-
-
-
-
-
-
-
-
-
-# def run_sql_pipeline(data, manual):
-
-
-#     SQL(sources=data, forcedupdatesources=manual)
-#     print('Complete')
 
 
 if __name__ == '__main__':

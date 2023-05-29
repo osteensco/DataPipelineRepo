@@ -11,6 +11,12 @@ import sys
 import re
 
 
+
+
+
+
+# parent objects
+
 class DataSource:
     def __init__(self) -> None:
         self.source = None
@@ -77,11 +83,6 @@ class DataSource:
             print('testitem/df failed to generate')
 
 
-
-
-#TODO
-##use SwitchBoard framework for orchestration
-
 class Query():
     def __init__(self, sql_string) -> None:
         self.body = sql_string
@@ -104,7 +105,17 @@ class Query():
 
 
 
+
+
+
+
+
+
+
+
 #data source objects        
+
+
 class WeatherData(DataSource):
     def __init__(self, states) -> None:
         super().__init__()
