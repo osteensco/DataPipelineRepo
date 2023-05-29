@@ -113,10 +113,6 @@ def run_pipeline(data, manual):
 
 
 
-#TODO
-##refactor to better handle testing before pushing builds to production
-##use SwitchBoard framework for orchestration
-    ####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
 
 
 if __name__ == '__main__':
