@@ -13,13 +13,32 @@ class SwitchBoard():
         }
 
 
+    def receiveCall(self):
+        # provide response object
+        return
 
     def grabStatus(self):
+        # read in appropriate json object in cloud storage
         return
-
 
     def grabDestination(self):
+        # determine the correct http endpoint to call from self.destinationMap
+        # determine if all dependency conditions are met based on statusController data
         return
+
+    def forwardCall(self):
+        # send request(s) to identified http endpoint(s)
+        # pass along any relevant data
+        return
+
+    def receiveConfirmation(self):
+        # called when caller is a completed pipeline function
+        return
+    
+    def updateStatus(self):
+        # update appropriate json object in cloud storage
+        return
+
 
 
 
