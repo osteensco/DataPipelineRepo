@@ -75,9 +75,8 @@ class DataSource:
 
 #TODO
 ##refactor cf datasource objects
-####decouple dependencies into query objects and/or .sql files
-##use google workflows for orchestration https://cloud.google.com/workflows/docs/overview | https://cloud.google.com/workflows/docs/reference/syntax/conditions
-####ensure objects are written with utilizing google workflows in mind (are these triggered by http, eventrac, or pub/sub? some combination?)
+    ####decouple dependencies into query objects and/or .sql files
+##use SwitchBoard framework for orchestration
 
 class Query():
     def __init__(self, sql_string) -> None:

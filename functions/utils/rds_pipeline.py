@@ -83,9 +83,29 @@ def run_pipeline(data, manual):
 #TODO
 ##refactor to better handle testing before pushing builds to production
 ##differentiate ingestion, transfer, and transform (sql) pipelines? datasources instead?
-###cloud function triggered by http? other use cases in event driven architecture? (scheduled queries cover scheduled driven use cases)
-####add downstream variable to datasource to define any downstream requirements within architecture
-####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
+    ####use SwitchBoard framework for orchestration
+    ####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
+
+
+
+##SwitchBoard framework:
+    ####PubSub triggers GCF endpoints.
+    ####Trigger endpoints will trigger SwitchBoard GCF via HTTP.
+    ####SwitchBoard contains graph data structure that will trigger appropriate pipelines via HTTP.
+        ###SwitchBoard will reference .json file in cloud storage for any additional dependencies that should be considered.
+        ###When a pipeline is triggered a 200 response is returned immediately to identify a successful trigger.
+        ###Any failures will exist in logs of pipeline GCF.
+    ####On completion of pipeline GCF, SwitchBoard will be triggered to communicate successful run.
+        ###SwitchBoard will update .json file in cloud storage once successful pipeline run is communicated to it.
+
+
+
+
+
+
+
+
+
 
 # def run_sql_pipeline(data, manual):
 
