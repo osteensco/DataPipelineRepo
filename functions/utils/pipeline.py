@@ -12,7 +12,6 @@ class Pipeline:
         self.data_objs = sources
         self.override_scheduling = forcedupdatesources
         self.init_log()
-        #add method so that logs land in a table in database as well
         self.run()
 
     def init_log(self):
@@ -67,7 +66,12 @@ class SQL(Pipeline):
     def __init__(self, sources, forcedupdatesources=[]) -> None:
         super().__init__(sources, forcedupdatesources)
 
-
+    def run(self): 
+        self.manual_schedule()
+        self.schedule()
+        for query in self.data_objs:
+            if query.scheduled:
+                query.run()
 
 
 

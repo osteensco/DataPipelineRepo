@@ -81,6 +81,13 @@ class DataSource:
 class Query():
     def __init__(self, sql_string) -> None:
         self.body = sql_string
+        self.db_engine = None #db client object init in schedule method
+        self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
+
+    def schedule(self):
+        '''
+        Method should be include logic specific to child Query object.
+        '''
         self.db_engine = bigquery.Client('portfolio-project-353016')
 
     def run(self):
