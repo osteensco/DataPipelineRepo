@@ -86,8 +86,7 @@ def run_pipeline(data, manual):
 
 #TODO
 ##refactor to better handle testing before pushing builds to production
-##differentiate ingestion, transfer, and transform (sql) pipelines? datasources instead?
-    ####use SwitchBoard framework for orchestration
+##use SwitchBoard framework for orchestration
     ####SQL datasource that will just run a given query via cloud function. use stored procedures when there's no need to provide table addresses via dependency injection.
 
 

@@ -26,13 +26,19 @@ class DataSource:
         self.dataset = '''portfolio-project-353016.ALL.'''
 
     def schedule(self):
+        '''
+        Method should include logic specific to child DataSource object.
+        '''
         # used for determine if data should be ingested
         # Returns True/False
         self.db_engine = bigquery.Client('portfolio-project-353016')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
-        pass
+        '''
+        Method should include logic specific to child DataSource object.
+        '''
+        return
 
     def load(self):
         if not self.schedule():#if manually scheduled
@@ -74,8 +80,6 @@ class DataSource:
 
 
 #TODO
-##refactor cf datasource objects
-    ####decouple dependencies into query objects and/or .sql files
 ##use SwitchBoard framework for orchestration
 
 class Query():
@@ -86,7 +90,7 @@ class Query():
 
     def schedule(self):
         '''
-        Method should be include logic specific to child Query object.
+        Method should include logic specific to child Query object.
         '''
         self.db_engine = bigquery.Client('portfolio-project-353016')
 
