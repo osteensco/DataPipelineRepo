@@ -260,7 +260,7 @@ class GeoData(DataSource):
 
     def schedule(self):
         super().schedule()
-        
+        return False
         query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
         tbls = self.db_engine.query(query).result().to_dataframe()
         tbls = tbls['table_id'].tolist()
@@ -281,6 +281,7 @@ class GeoData(DataSource):
     def extract(self):
         for state in self.States:
             r = self.getreq(f'''{self.source}/{state.lower()}/#zips-list''')
+            r.raise_for_status()
             soup = bs.BeautifulSoup(r.text, 'html.parser')
             zips = []
             counties = []#these lists will contain the data for each column, since we loop it will maintain correct order for rows
@@ -300,7 +301,7 @@ class GeoData(DataSource):
                             counties.append(x)
                     else:#bypass header
                         continue
-            if len(counties) != len(zips):#these should always equal, otherwise will end program and print below info
+            if len(counties) != len(zips):#these should always equal, and not be 0
                 logging.error(f'''Shape Error found for state {state}''')
                 logging.info(f'''{len(counties)} rows for counties''')
                 logging.info(f'''{len(zips)} rows for zips''')

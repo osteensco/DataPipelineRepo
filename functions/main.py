@@ -26,7 +26,7 @@ def weather_pipeline(event, context):
 
 def uslocations_pipeline(event, context):
     data = [
-    GeoData()
+        GeoData()
     ]
 
     manual = [
@@ -88,3 +88,6 @@ def cf_gamestats_pipeline(event, context):
     ]
 
     run_pipeline(data, manual)
+
+
+
