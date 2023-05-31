@@ -47,7 +47,7 @@ class DataSource:
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
     def truncate(self):
-        query = f'''TRUNCATE TABLE {self.dataset}{self.table_name}'''
+        query = f'''TRUNCATE TABLE `{self.dataset}{self.table_name}`'''
         result = self.db_engine.query(query).result()
         logging.info(f'''{type(self).__name__} - {result}''')
 
@@ -447,7 +447,7 @@ class CFGames(DataSource):#Table containing meta game data Columns: year, oppone
 
     def extract(self):
         allgames = []
-        query = f"""SELECT * FROM {self.dataset}{self.table_name}"""
+        query = f"""SELECT * FROM `{self.dataset}{self.table_name}`"""
         p5schls = self.db_engine.query(query).result().to_dataframe()
         power5teams = [{'id': i['ID'], 'path': i['URL']} for i in p5schls.to_dict('records')]
 
@@ -499,7 +499,7 @@ class CFGames(DataSource):#Table containing meta game data Columns: year, oppone
             self.df = self.clean_and_append(self.df, years)
 
     def clean_and_append(self, df, years):
-        query = f"""SELECT * FROM {self.dataset}{self.table_name} WHERE YEAR IN {tuple(years) if len(years) > 1 else f'''('{years[0]}')'''}"""
+        query = f"""SELECT * FROM `{self.dataset}{self.table_name}` WHERE YEAR IN {tuple(years) if len(years) > 1 else f'''('{years[0]}')'''}"""
         qdf = self.db_engine.query(query).result().to_dataframe()
         df = pd.concat([df, qdf], ignore_index=True)
         df = df.drop_duplicates(keep=False)
