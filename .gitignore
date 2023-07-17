@@ -4,4 +4,6 @@
 /functions/util/__pycache__
 /bqAutoAuth.py
 /cloudbuilds/template.yaml
-/switchboardapp/pipelines/**/venv
+/switchboardapp/**/**/venv
+/switchboardapp/**/**/sb_endpoint.env
+
