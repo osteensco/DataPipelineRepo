@@ -1,0 +1,13 @@
+
+steps:
+- name: 'gcr.io/cloud-builders/gcloud'
+  args:
+  - functions
+  - deploy
+  - main
+  - --source=./pipelines/websitehits_pipeline
+  - --trigger-http
+  - --allow-unauthenticated
+  - --runtime=python39
+  - --memory=1024MB
+  - --timeout=540s
