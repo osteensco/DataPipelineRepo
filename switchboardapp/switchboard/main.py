@@ -19,4 +19,3 @@ def main(request):
     sb = SwitchBoard(GCP, bucket, payload, destinationMap)
     sb.run()
 
-    
