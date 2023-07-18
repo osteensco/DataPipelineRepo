@@ -1,12 +1,12 @@
 
 import os
 from dotenv import load_dotenv
-from switchboard_py import http_trigger, Caller
+from switchboard_py import Caller
 import base64
 
 
 
-@http_trigger
+
 def main(event, context):
 
     load_dotenv('sb_endpoint.env')
