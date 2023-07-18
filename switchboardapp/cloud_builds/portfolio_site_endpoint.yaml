@@ -5,7 +5,7 @@ steps:
   - functions
   - deploy
   - main
-  - --source=.switchboardapp/endpoints/portfolio_site_traffic
+  - --source=switchboardapp/endpoints/portfolio_site_traffic
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39
