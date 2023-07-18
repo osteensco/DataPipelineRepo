@@ -8,3 +8,4 @@
 /switchboardapp/**/**/sb_endpoint.env
 
 /switchboardapp/switchboard/destinationMap.env
+/switchboardapp/switchboard/destinationMap.json
