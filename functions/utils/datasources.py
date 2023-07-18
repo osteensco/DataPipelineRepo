@@ -11,6 +11,12 @@ import sys
 import re
 
 
+
+
+
+
+# parent objects
+
 class DataSource:
     def __init__(self) -> None:
         self.source = None
@@ -26,13 +32,19 @@ class DataSource:
         self.dataset = '''portfolio-project-353016.ALL.'''
 
     def schedule(self):
+        '''
+        Method should include logic specific to child DataSource object.
+        '''
         # used for determine if data should be ingested
         # Returns True/False
         self.db_engine = bigquery.Client('portfolio-project-353016')
         # Child DataSource objects will have specific queries to determine the boolean value to return
 
     def extract(self):
-        pass
+        '''
+        Method should include logic specific to child DataSource object.
+        '''
+        return
 
     def load(self):
         if not self.schedule():#if manually scheduled
@@ -70,7 +82,40 @@ class DataSource:
         else:
             print('testitem/df failed to generate')
 
-        
+
+class Query():
+    def __init__(self, sql_string) -> None:
+        self.body = sql_string
+        self.db_engine = None #db client object init in schedule method
+        self.scheduled = None #Boolean flag used by pipeline to determine if data should be pulled or not
+
+    def schedule(self):
+        '''
+        Method should include logic specific to child Query object.
+        '''
+        self.db_engine = bigquery.Client('portfolio-project-353016')
+
+    def run(self):
+        self.db_engine.query(self.body).result()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#data source objects        
+
+
 class WeatherData(DataSource):
     def __init__(self, states) -> None:
         super().__init__()
@@ -758,6 +803,8 @@ class WebsiteEndpoint(DataSource):
         loadjob.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
         self.db_engine.load_table_from_dataframe(self.df, f'''{self.dataset}{self.table_name}''', loadjob).result()
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
+
+
 
 
 

@@ -1,6 +1,6 @@
 import datetime
 import logging
-
+from datasources import DataSource, Query
 
 
 
@@ -12,7 +12,6 @@ class Pipeline:
         self.data_objs = sources
         self.override_scheduling = forcedupdatesources
         self.init_log()
-        #add method so that logs land in a table in database as well
         self.run()
 
     def init_log(self):
@@ -63,11 +62,58 @@ class Pipeline:
 
 
 
+class SQL(Pipeline):
+    def __init__(self, sources, forcedupdatesources=[]) -> None:
+        super().__init__(sources, forcedupdatesources)
+
+    def run(self): 
+        self.manual_schedule()
+        self.schedule()
+        for query in self.data_objs:
+            if query.scheduled:
+                query.run()
+
+
+
+
+
+
+
+
+
+
+def map_type(data_objs:list, manual_objs:list, type:any):
+
+    def extract_type(objs:list, type:any):
+        return [o for o in objs if isinstance(type)]
+    
+    return {
+        'sources': extract_type(data_objs, type),
+        'forcedupdatesources': extract_type(manual_objs, type)
+    }
+
+
 def run_pipeline(data, manual):
+    
+    datasources = map_type(data, manual, DataSource)
 
+    queries = map_type(data, manual, Query)
 
-    Pipeline(sources=data, forcedupdatesources=manual)
+    Pipeline(sources=datasources['sources'], forcedupdatesources=datasources['forcedupdatesources'])
+    
+    SQL(sources=queries['sources'], forcedupdatesources=queries['forcedupdatesources'])
+    
     print('Complete')
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
     pass

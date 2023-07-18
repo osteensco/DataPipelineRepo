@@ -1,0 +1,13 @@
+
+steps:
+- name: 'gcr.io/cloud-builders/gcloud'
+  args:
+  - functions
+  - deploy
+  - main
+  - --source=./endpoints/portfolio_site_traffic
+  - --trigger-http
+  - --allow-unauthenticated
+  - --runtime=python39
+  - --memory=1024MB
+  - --timeout=540s
