@@ -4,8 +4,9 @@ steps:
   args:
   - functions
   - deploy
-  - main
+  - websitehits_pipeline_testing
   - --source=switchboardapp/pipelines/websitehits_pipeline
+  - --entry-point=main
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39

@@ -4,8 +4,9 @@ steps:
   args:
   - functions
   - deploy
-  - main
+  - switchboard_testing
   - --source=switchboardapp/switchboard
+  - --entry-point=main
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39
