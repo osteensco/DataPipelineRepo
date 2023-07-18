@@ -59,7 +59,7 @@ class DataSource:
         logging.info(f'''{type(self).__name__} loaded into {self.table_name}''' )
 
     def truncate(self):
-        query = f'''TRUNCATE TABLE {self.dataset}{self.table_name}'''
+        query = f'''TRUNCATE TABLE `{self.dataset}{self.table_name}`'''
         result = self.db_engine.query(query).result()
         logging.info(f'''{type(self).__name__} - {result}''')
 
@@ -305,7 +305,7 @@ class GeoData(DataSource):
 
     def schedule(self):
         super().schedule()
-        
+        return False
         query = """SELECT table_id FROM `portfolio-project-353016.ALL.__TABLES__`"""
         tbls = self.db_engine.query(query).result().to_dataframe()
         tbls = tbls['table_id'].tolist()
@@ -326,6 +326,7 @@ class GeoData(DataSource):
     def extract(self):
         for state in self.States:
             r = self.getreq(f'''{self.source}/{state.lower()}/#zips-list''')
+            r.raise_for_status()
             soup = bs.BeautifulSoup(r.text, 'html.parser')
             zips = []
             counties = []#these lists will contain the data for each column, since we loop it will maintain correct order for rows
@@ -345,7 +346,7 @@ class GeoData(DataSource):
                             counties.append(x)
                     else:#bypass header
                         continue
-            if len(counties) != len(zips):#these should always equal, otherwise will end program and print below info
+            if len(counties) != len(zips):#these should always equal, and not be 0
                 logging.error(f'''Shape Error found for state {state}''')
                 logging.info(f'''{len(counties)} rows for counties''')
                 logging.info(f'''{len(zips)} rows for zips''')
@@ -492,7 +493,7 @@ class CFGames(DataSource):#Table containing meta game data Columns: year, oppone
 
     def extract(self):
         allgames = []
-        query = f"""SELECT * FROM {self.dataset}{self.table_name}"""
+        query = f"""SELECT * FROM `{self.dataset}{self.table_name}`"""
         p5schls = self.db_engine.query(query).result().to_dataframe()
         power5teams = [{'id': i['ID'], 'path': i['URL']} for i in p5schls.to_dict('records')]
 
@@ -544,7 +545,7 @@ class CFGames(DataSource):#Table containing meta game data Columns: year, oppone
             self.df = self.clean_and_append(self.df, years)
 
     def clean_and_append(self, df, years):
-        query = f"""SELECT * FROM {self.dataset}{self.table_name} WHERE YEAR IN {tuple(years) if len(years) > 1 else f'''('{years[0]}')'''}"""
+        query = f"""SELECT * FROM `{self.dataset}{self.table_name}` WHERE YEAR IN {tuple(years) if len(years) > 1 else f'''('{years[0]}')'''}"""
         qdf = self.db_engine.query(query).result().to_dataframe()
         df = pd.concat([df, qdf], ignore_index=True)
         df = df.drop_duplicates(keep=False)
@@ -817,3 +818,5 @@ if __name__ == '__main__':
     run = CFGameTeamStats()
     run.test()
     # run.load()
+
+

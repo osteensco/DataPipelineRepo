@@ -1,11 +1,10 @@
 /env
 /__pycache__
 /functions/__pycache__
-/functions/util/__pycache__
+/functions/utils/__pycache__
 /bqAutoAuth.py
 /cloudbuilds/template.yaml
 /switchboardapp/**/**/venv
 /switchboardapp/**/**/sb_endpoint.env
-
 /switchboardapp/switchboard/destinationMap.env
 /switchboardapp/switchboard/destinationMap.json
