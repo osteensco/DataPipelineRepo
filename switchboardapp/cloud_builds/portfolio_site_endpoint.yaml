@@ -4,8 +4,9 @@ steps:
   args:
   - functions
   - deploy
-  - main
+  - portfolio_site_endpoint_switchboard_test
   - --source=switchboardapp/endpoints/portfolio_site_traffic
+  - --entry-point=main
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39
