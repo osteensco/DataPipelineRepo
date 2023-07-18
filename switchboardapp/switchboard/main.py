@@ -3,6 +3,10 @@ import os
 from dotenv import load_dotenv
 from switchboard_py import http_trigger, SwitchBoard, connect_to_bucket, GCP
 
+
+
+
+
 bucket = connect_to_bucket(GCP)
 
 @http_trigger
