@@ -5,7 +5,7 @@ steps:
   - functions
   - deploy
   - main
-  - --source=./pipelines/websitehits_pipeline
+  - --source=switchboardapp/pipelines/websitehits_pipeline
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39

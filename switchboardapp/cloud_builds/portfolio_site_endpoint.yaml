@@ -7,7 +7,7 @@ steps:
   - portfolio_site_endpoint_switchboard_test
   - --source=switchboardapp/endpoints/portfolio_site_traffic
   - --entry-point=main
-  - --trigger-http
+  - --trigger-topic=portfoliowebsite
   - --allow-unauthenticated
   - --runtime=python39
   - --memory=1024MB

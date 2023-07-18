@@ -25,8 +25,9 @@ def main(request):
         
     ]
 
-    run_pipeline(data, manual)
-
+    # run_pipeline(data, manual)
+    print(data[0].payload)
+    
     load_dotenv('sb_endpoint.env')
     sb_endpoint = os.environ.get('SWITCHBOARD')
     caller_name = 'pipeline_boilerplate'

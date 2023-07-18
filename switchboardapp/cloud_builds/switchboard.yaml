@@ -5,7 +5,7 @@ steps:
   - functions
   - deploy
   - main
-  - --source=./switchboard
+  - --source=switchboardapp/switchboard
   - --trigger-http
   - --allow-unauthenticated
   - --runtime=python39
