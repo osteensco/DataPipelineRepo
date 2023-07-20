@@ -14,6 +14,7 @@ def main(request):
 
     load_dotenv('destinationMap.env')
     payload = request.get_json()
+    print(payload)
     destinationMap = os.environ.get('DESTINATIONMAP')
 
     sb = SwitchBoard(GCP, bucket, payload, destinationMap)
