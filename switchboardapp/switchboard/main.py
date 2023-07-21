@@ -7,6 +7,8 @@ import json
 
 
 
+
+
 bucket = connect_to_bucket(GCP)
 
 @http_trigger
