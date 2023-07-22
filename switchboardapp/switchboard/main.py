@@ -11,7 +11,7 @@ import json
 
 bucket = connect_to_bucket(GCP)
 
-@http_trigger
+# @http_trigger
 def main(request):
 
     load_dotenv('destinationMap.env')
@@ -23,6 +23,7 @@ def main(request):
     sb = SwitchBoard(GCP, bucket, payload, destinationMap)
     sb.run()
 
+    return 'OK', 200
 
 
 
